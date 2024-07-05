@@ -37,7 +37,6 @@ def save_checkpoint(state, is_best, save, checkpoint):
 
 def main(device, args):
 
-
     ASR_Top1 = AverageMeter()
     ASR_Top5 = AverageMeter()
     Main_Top1_acc = AverageMeter()
@@ -49,7 +48,6 @@ def main(device, args):
         random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-
 
         #load data
         # Data normalization and augmentation (optional)
@@ -63,7 +61,6 @@ def main(device, args):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-
 
         # Load CIFAR-10 dataset
         # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
@@ -81,15 +78,11 @@ def main(device, args):
 
         # 找出所有属于这个类别的样本的索引
         target_indices = np.where(np.array(trainset.targets) == target_label)[0]
-
         non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
-
         non_target_set = Subset(testset, non_target_indices)
 
-
-        # 从目标索引中随机选择10个索引, 作为毒样本 poison_num = 10大概就是知道数据中的有毒样本的数量？
+        # 从目标索引中随机选择 poison_num 个索引, 作为毒样本 
         selected_indices = np.random.choice(target_indices, args.poison_num, replace=False)
-
 
         train_queue = torch.utils.data.DataLoader(
             dataset=trainset,
@@ -101,7 +94,6 @@ def main(device, args):
             batch_size=args.batch_size,
             num_workers=args.workers
         )
-
         non_target_queue = torch.utils.data.DataLoader(
             dataset=non_target_set,
             batch_size=args.batch_size,
@@ -159,21 +151,16 @@ def main(device, args):
         _, (x_val, y_val, index) = next(enumerate(train_queue))
 
         #delta = torch.zeros_like(x_val[1][1]).float().to(device)
-        # 用于存储有毒样本的特征？
         delta = torch.zeros((1, 3, x_val.shape[-2], args.half), device=device)
         delta.requires_grad_(True)
 
         # Set a 9-pixel pattern to 1
         #delta[:, 0:3, 0:3] = 1
-
-
-
         for epoch in range(args.start_epoch, args.epochs):
 
             logging.info('epoch %d args.lr %e ', epoch, args.lr)
 
             #train_loss, delta = vfltrainer.train_narcissus(train_queue, criterion, bottom_criterion,optimizer_list, device, args, delta, selected_indices, trigger_optimizer)
-
             if args.backdoor_start:
                 if (epoch + 1) < args.backdoor:
                     # acc = vfltrainer.pesudo_label_predict(train_queue, device)
@@ -190,7 +177,6 @@ def main(device, args):
                                                                    optimizer_list, device, args, delta, selected_indices
                                                                    )
             else:
-
                 train_loss = vfltrainer.train_mul(train_queue, criterion, bottom_criterion, optimizer_list,
                                            device, args)
 
@@ -290,8 +276,6 @@ def main(device, args):
             sys.stdout = savedStdout
 
         print('Last epoch evaluation saved to txt!')
-
-
 
 
 if __name__ == '__main__':
