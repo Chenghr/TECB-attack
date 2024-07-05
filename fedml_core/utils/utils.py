@@ -6,7 +6,8 @@ import torchvision.transforms as transforms
 from sklearn import metrics
 from .solver import solve_isotropic_covariance, symKL_objective
 import math
-import ruamel.yaml as yaml
+# import ruamel.yaml as yaml
+import yaml
 import torch.nn as nn
 
 
@@ -266,14 +267,25 @@ def keep_predict_loss(y_true, y_pred):
     # print("y_true * y_pred:", (y_true * y_pred))
     return torch.sum(y_true * y_pred)
 
+# def over_write_args_from_file(args, yml):
+#     """
+#     overwrite arguments according to config file
+#     """
+#     if yml == '':
+#         return
+#     with open(yml, 'r', encoding='utf-8') as f:
+#         dic = yaml.load(f.read(), Loader=yaml.Loader)
+#         for k in dic:
+#             setattr(args, k, dic[k])
+
 def over_write_args_from_file(args, yml):
     """
-    overwrite arguments according to config file
+    Overwrite arguments according to config file
     """
     if yml == '':
         return
     with open(yml, 'r', encoding='utf-8') as f:
-        dic = yaml.load(f.read(), Loader=yaml.Loader)
+        dic = yaml.load(f, Loader=yaml.FullLoader)  # Use yaml.FullLoader for safety
         for k in dic:
             setattr(args, k, dic[k])
 

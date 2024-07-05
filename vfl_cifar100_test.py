@@ -7,8 +7,8 @@ import numpy as np
 from sklearn.utils import shuffle
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
-from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
-from fedml_core.data_preprocessing.NUS_WIDE.dataset import nuswide_dataset
+# from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
+# from fedml_core.data_preprocessing.NUS_WIDE.dataset import nuswide_dataset
 from fedml_core.model.baseline.vfl_models import BottomModelForCifar100, TopModelForCifar100
 from fedml_core.trainer.vfl_trainer import VFLTrainer
 from fedml_core.utils.utils import AverageMeter, keep_predict_loss, over_write_args_from_file

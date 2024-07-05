@@ -222,7 +222,7 @@ class VFLTrainer(ModelTrainer):
                                        loss_func=bottom_criterion,
                                        args=args)
             '''
-
+ 
             # logging.info('Update Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
             #     epoch, (batch_idx + 1) * self.args.batch_size, len(self.local_training_data) * self.args.batch_size,
             #            100. * (batch_idx + 1) / len(self.local_training_data), loss.item()))

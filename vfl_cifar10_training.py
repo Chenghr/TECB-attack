@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.utils import shuffle
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
-from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
+# from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
 from fedml_core.data_preprocessing.cifar10.dataset import IndexedCIFAR10
 from fedml_core.model.baseline.vfl_models import BottomModelForCifar10, TopModelForCifar10
 from fedml_core.trainer.vfl_trainer import VFLTrainer
