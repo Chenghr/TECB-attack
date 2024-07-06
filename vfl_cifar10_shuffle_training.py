@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import random
@@ -12,13 +13,12 @@ from fedml_core.data_preprocessing.cifar10.dataset import IndexedCIFAR10
 from fedml_core.model.baseline.vfl_models import BottomModelForCifar10, TopModelForCifar10
 from fedml_core.trainer.vfl_trainer import VFLTrainer
 from fedml_core.utils.utils import AverageMeter, keep_predict_loss, over_write_args_from_file
+from fedml_core.utils.logger import setup_logger
 
 # from fedml_api.utils.utils import save_checkpoint
 import torch
 import torch.nn as nn
 import argparse
-import time
-import glob
 import shutil
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
@@ -34,95 +34,175 @@ def save_checkpoint(state, is_best, save, checkpoint):
         shutil.copyfile(filename, best_filename)
 
 
-def main(device, args):
+def set_seed(seed):
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
+
+def set_dataset(args):
+    # load data
+    # Data normalization and augmentation (optional)
+    train_transform = transforms.Compose([
+        # transforms.RandomHorizontalFlip(),
+        # transforms.RandomCrop(32, padding=4),
+        transforms.ToTensor(),
+        # transforms.Normalize((0.4914, 0.4822, 0.4465) , (0.2471, 0.2435, 0.2616))
+    ])
+
+    # Load CIFAR-10 dataset
+    # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
+    trainset = IndexedCIFAR10(root='./data', train=True, download=True, transform=train_transform)
+    testset = IndexedCIFAR10(root='./data', train=False, download=True, transform=train_transform)
+
+    # CIFAR-10 类别标签（以类别名称的列表形式给出）
+    classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+    # 选择你感兴趣的类别
+    target_class = args.target_class
+
+    # 找出这个类别的标签
+    target_label = classes.index(target_class)
+
+    # 找出所有属于这个类别的样本的索引
+    non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
+    non_target_set = Subset(testset, non_target_indices)
+
+    train_queue = torch.utils.data.DataLoader(
+        dataset=trainset,
+        batch_size=args.batch_size, shuffle=True,
+        num_workers=args.workers
+    )
+    test_queue = torch.utils.data.DataLoader(
+        dataset=testset,
+        batch_size=args.batch_size,
+        num_workers=args.workers
+    )
+    non_target_queue = torch.utils.data.DataLoader(
+        dataset=non_target_set,
+        batch_size=args.batch_size,
+        num_workers=args.workers
+    )
+    return train_queue, test_queue, non_target_queue, target_label
+
+
+def set_model_releated(args):
+    # build model
+    model_list = []
+    model_list.append(BottomModelForCifar10())
+    model_list.append(BottomModelForCifar10())
+    model_list.append(TopModelForCifar10())
+
+    # 加载预训练模型
+    save_model_dir = args.save + "/0_saved_models"
+    checkpoint_path = save_model_dir + "/model_best.pth.tar"
+    checkpoint = torch.load(checkpoint_path)
+
+    # 加载每个模型的参数
+    for i in range(len(model_list)):
+        model_list[i].load_state_dict(checkpoint["state_dict"][i])
+
+    # 复制一份 model_list
+    copied_model_list = copy.deepcopy(model_list)
+
+    # 加载delta,用来生成有毒样本
+    delta = torch.load(save_model_dir + "/delta.pth")
+
+    # optimizer and stepLR
+    optimizer_list = [
+        torch.optim.SGD(
+            model.parameters(),
+            args.lr,
+            momentum=args.momentum,
+            weight_decay=args.weight_decay,
+        )
+        for model in model_list
+    ]
+
+    stone1 = args.stone1  # 50 int(args.epochs * 0.5) 学习率衰减的epoch数
+    stone2 = args.stone2  # 85 int(args.epochs * 0.8) 学习率衰减的epoch数
+    lr_scheduler_top_model = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer_list[2], milestones=[stone1, stone2], gamma=args.step_gamma
+    )
+    lr_scheduler_a = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer_list[0], milestones=[stone1, stone2], gamma=args.step_gamma
+    )
+    lr_scheduler_b = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer_list[1], milestones=[stone1, stone2], gamma=args.step_gamma
+    )
+    # change the lr_scheduler to the one you want to use
+    lr_scheduler_list = [lr_scheduler_a, lr_scheduler_b, lr_scheduler_top_model]
+
+    return model_list, copied_model_list, delta, optimizer_list, lr_scheduler_list
+
+
+def main(logger, device, args):
+    
     for seed in range(1):
-        # random seed for 10 runs
-        np.random.seed(seed)
-        random.seed(seed)
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        set_seed(seed=seed)
+        
+        train_queue, test_queue, non_target_queue, target_label = set_dataset(args)
 
-        # load data
-        # Data normalization and augmentation (optional)
-        train_transform = transforms.Compose([
-            # transforms.RandomHorizontalFlip(),
-            # transforms.RandomCrop(32, padding=4),
-            transforms.ToTensor(),
-            # transforms.Normalize((0.4914, 0.4822, 0.4465) , (0.2471, 0.2435, 0.2616))
-        ])
-
-        # Load CIFAR-10 dataset
-        # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
-        trainset = IndexedCIFAR10(root='./data', train=True, download=True, transform=train_transform)
-        testset = IndexedCIFAR10(root='./data', train=False, download=True, transform=train_transform)
-
-        # CIFAR-10 类别标签（以类别名称的列表形式给出）
-        classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-        # 选择你感兴趣的类别
-        target_class = args.target_class
-
-        # 找出这个类别的标签
-        target_label = classes.index(target_class)
-
-        # 找出所有属于这个类别的样本的索引
-        non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
-
-        non_target_set = Subset(testset, non_target_indices)
-
-        train_queue = torch.utils.data.DataLoader(
-            dataset=trainset,
-            batch_size=args.batch_size, shuffle=True,
-            num_workers=args.workers
-        )
-        test_queue = torch.utils.data.DataLoader(
-            dataset=testset,
-            batch_size=args.batch_size,
-            num_workers=args.workers
-        )
-
-        non_target_queue = torch.utils.data.DataLoader(
-            dataset=non_target_set,
-            batch_size=args.batch_size,
-            num_workers=args.workers
-        )
-
-
-        # build model
-        model_list = []
-        model_list.append(BottomModelForCifar10())
-        model_list.append(BottomModelForCifar10())
-        model_list.append(TopModelForCifar10())
+        (
+            model_list,
+            copied_model_list,
+            delta,
+            optimizer_list,
+            lr_scheduler_list,
+        ) = set_model_releated(args)
 
         criterion = nn.CrossEntropyLoss().to(device)
         bottom_criterion = keep_predict_loss
 
-        # 加载预训练模型
-        save_model_dir = args.save + "/0_saved_models"
-        checkpoint_path = save_model_dir + "/model_best.pth.tar"
-        checkpoint = torch.load(checkpoint_path)
+        vfl_trainer = VFLTrainer(model_list)
+        vfl_shuffle_trainer = VFLTrainer(copied_model_list)
 
-        # 加载每个模型的参数
-        for i in range(len(model_list)):
-            model_list[i].load_state_dict(checkpoint['state_dict'][i])
+        logger.info("\n################################ Test Backdoor Models with TrainData ############################")
 
-        # 加载delta,用来生成有毒样本
-        delta = torch.load(save_model_dir + "/delta.pth")
+        training_loss, top1_acc, top5_acc = vfl_trainer.test_mul(
+            train_queue, criterion, device, args
+        )
+        logger.info(f"training_loss: {training_loss}, top1_acc: {top1_acc}, top5_acc: {top5_acc}")
+        
+        logger.info("\n################################ Test Backdoor Models with TestData ############################")
 
-        vfltrainer = VFLTrainer(model_list)
+        test_loss, top1_acc, top5_acc = vfl_trainer.test_mul(
+            test_queue, criterion, device, args
+        )
+        test_loss, test_asr_acc, _ = vfl_trainer.test_backdoor_mul(
+            non_target_queue, criterion, device, args, delta, target_label
+        )
+        logger.info(f"test_loss: {test_loss}, top1_acc: {top1_acc}, top5_acc: {top5_acc}, test_asr_acc: {test_asr_acc}")
 
-        print("################################ Test Backdoor Models ############################")
+        logger.info("\n################################ Shuffle Training with TrainData ############################")
+        for epoch in range(0, args.shuffle_epochs):
+            logger.info(f'epoch {epoch}, args.lr {args.lr:e}')
+            
+            train_loss = vfl_shuffle_trainer.train_shuffle(train_queue, criterion, bottom_criterion, optimizer_list, device, args)
+            
+            lr_scheduler_list[0].step()
+            lr_scheduler_list[1].step()
+            lr_scheduler_list[2].step()
 
-        test_loss, top1_acc, top5_acc = vfltrainer.test_mul(test_queue, criterion, device, args)
+            test_loss, top1_acc, top5_acc = vfl_shuffle_trainer.test_mul(
+                test_queue, criterion, device, args
+            )
+            _, test_asr_acc, _ = vfl_shuffle_trainer.test_backdoor_mul(
+                non_target_queue, criterion, device, args, delta, target_label
+            )
+            logger.info(f"epoch: {epoch+1}, train_loss: {train_loss}, test_loss: {test_loss}, "
+                        f"top1_acc: {top1_acc}, top5_acc: {top5_acc}, test_asr_acc: {test_asr_acc}")
+        
+        logger.info("\n################################ Test Backdoor Shuffle Models with TestData ############################")
 
-        test_loss, test_asr_acc, _ = vfltrainer.test_backdoor_mul(non_target_queue, criterion, device, args, delta,
-                                                                  target_label)
-        print("test_loss: ", test_loss, "top1_acc: ", top1_acc,
-              "top5_acc: ", top5_acc, "test_asr_acc: ", test_asr_acc)
-
-
-
+        test_loss, top1_acc, top5_acc = vfl_shuffle_trainer.test_mul(
+            test_queue, criterion, device, args
+        )
+        test_loss, test_asr_acc, _ = vfl_shuffle_trainer.test_backdoor_mul(
+            non_target_queue, criterion, device, args, delta, target_label
+        )
+        logger.info(f"test_loss: {test_loss}, top1_acc: {top1_acc}, top5_acc: {top5_acc}, test_asr_acc: {test_asr_acc}")
 
 if __name__ == '__main__':
     print("################################ Prepare Data ############################")
@@ -194,6 +274,8 @@ if __name__ == '__main__':
     parser.add_argument('--corruption_amp', type=float, default=10, help='amplication of corruption')
     parser.add_argument('--backdoor_start', action='store_true', default=False, help='backdoor')
 
+    parser.add_argument('--shuffle_epochs', type=float, default=10, help='epochs of shuffle training')
+
     # config file
     parser.add_argument('--c', type=str, default='configs/base/cifar10_bestattack.yml', help='config file')
 
@@ -204,24 +286,11 @@ if __name__ == '__main__':
         os.makedirs(args.save)
 
     # 创建一个logger
-    logger = logging.getLogger('experiment_logger')
-    logger.setLevel(logging.INFO)
-
-    # 创建一个handler，用于写入日志文件
-    fh = logging.FileHandler(args.save + '/experiment.log')
-    fh.setLevel(logging.INFO)
-
-    # 定义handler的输出格式
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    fh.setFormatter(formatter)
-
-    # 给logger添加handler
-    logger.addHandler(fh)
-
+    logger = setup_logger(args)
     logger.info(args)
     logger.info(device)
 
-    main(device=device, args=args)
+    main(logger=logger, device=device, args=args)
 
     # Test set: Average loss: 0.0110, Top-1 Accuracy: 8052.0/10000 (80.5200%), Top-5 Accuracy: 9787.0/10000 (97.8700%)
     # Backdoor Test set: Average loss: 0.6695, ASR Top-1 Accuracy: 9000.0/9000 (100.0000%, ASR Top-5 Accuracy: 9000.0/9000 (100.0000%)

@@ -2,3 +2,116 @@
 2024-07-04 12:24:30,100 - experiment_logger - INFO - cuda:0
 2024-07-04 12:25:53,305 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, c='configs/base/cifar10_bestattack.yml')
 2024-07-04 12:25:53,305 - experiment_logger - INFO - cuda:0
+2024-07-05 21:06:04,504 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, c='configs/base/cifar10_bestattack.yml')
+2024-07-05 21:06:04,504 - experiment_logger - INFO - cuda:0
+2024-07-05 21:14:12,279 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, c='configs/base/cifar10_bestattack.yml')
+2024-07-05 21:14:12,280 - experiment_logger - INFO - cuda:0
+2024-07-06 15:04:09,447 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+2024-07-06 15:04:09,447 - experiment_logger - INFO - cuda:0
+2024-07-06 15:04:26,642 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+2024-07-06 15:04:26,642 - experiment_logger - INFO - cuda:0
+2024-07-06 15:04:46,825 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+2024-07-06 15:04:46,825 - experiment_logger - INFO - cuda:0
+2024-07-06 15:06:31,124 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+2024-07-06 15:06:31,124 - experiment_logger - INFO - cuda:0
+2024-07-06 15:07:28,523 - experiment_logger - INFO - Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+2024-07-06 15:07:28,524 - experiment_logger - INFO - cuda:0
+07-06/15:39:27|INFO |vfl_cifar10_shuffle_training.py:293|Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+07-06/15:39:27|INFO |vfl_cifar10_shuffle_training.py:294|cuda:0
+07-06/15:39:29|INFO |vfl_cifar10_shuffle_training.py:161|
+################################ Test Backdoor Models with TrainData ############################
+07-06/15:39:33|INFO |vfl_cifar10_shuffle_training.py:166|training_loss: 
+07-06/15:39:33|INFO |vfl_cifar10_shuffle_training.py:168|
+################################ Test Backdoor Models with TestData ############################
+07-06/15:39:35|INFO |vfl_cifar10_shuffle_training.py:176|test_loss: 
+07-06/15:39:35|INFO |vfl_cifar10_shuffle_training.py:179|
+################################ Shuffle Training with TrainData ############################
+07-06/15:39:35|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:39:48|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:39:48|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:39:59|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:39:59|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:40:10|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:40:10|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:40:22|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:40:22|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:40:32|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:40:32|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:40:43|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:40:43|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:40:55|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:40:55|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:41:06|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:41:06|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:41:18|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:41:18|INFO |vfl_cifar10_shuffle_training.py:181|epoch %d args.lr %e 
+07-06/15:41:29|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:41:29|INFO |vfl_cifar10_shuffle_training.py:198|
+################################ Test Backdoor Shuffle Models with TestData ############################
+07-06/15:41:30|INFO |vfl_cifar10_shuffle_training.py:206|test_loss: 
+07-06/15:42:38|INFO |vfl_cifar10_shuffle_training.py:293|Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+07-06/15:42:38|INFO |vfl_cifar10_shuffle_training.py:294|cuda:0
+07-06/15:42:40|INFO |vfl_cifar10_shuffle_training.py:161|
+################################ Test Backdoor Models with TrainData ############################
+07-06/15:42:44|INFO |vfl_cifar10_shuffle_training.py:166|training_loss: 
+07-06/15:42:44|INFO |vfl_cifar10_shuffle_training.py:168|
+################################ Test Backdoor Models with TestData ############################
+07-06/15:42:46|INFO |vfl_cifar10_shuffle_training.py:176|test_loss: 
+07-06/15:42:46|INFO |vfl_cifar10_shuffle_training.py:179|
+################################ Shuffle Training with TrainData ############################
+07-06/15:42:46|INFO |vfl_cifar10_shuffle_training.py:181|epoch 0 args.lr 2.000000e-01
+07-06/15:42:58|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:42:58|INFO |vfl_cifar10_shuffle_training.py:181|epoch 1 args.lr 2.000000e-01
+07-06/15:43:09|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:43:09|INFO |vfl_cifar10_shuffle_training.py:181|epoch 2 args.lr 2.000000e-01
+07-06/15:43:21|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:43:21|INFO |vfl_cifar10_shuffle_training.py:181|epoch 3 args.lr 2.000000e-01
+07-06/15:43:33|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:43:33|INFO |vfl_cifar10_shuffle_training.py:181|epoch 4 args.lr 2.000000e-01
+07-06/15:43:45|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:43:45|INFO |vfl_cifar10_shuffle_training.py:181|epoch 5 args.lr 2.000000e-01
+07-06/15:43:57|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:43:57|INFO |vfl_cifar10_shuffle_training.py:181|epoch 6 args.lr 2.000000e-01
+07-06/15:44:09|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:44:09|INFO |vfl_cifar10_shuffle_training.py:181|epoch 7 args.lr 2.000000e-01
+07-06/15:44:19|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:44:19|INFO |vfl_cifar10_shuffle_training.py:181|epoch 8 args.lr 2.000000e-01
+07-06/15:44:30|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:44:30|INFO |vfl_cifar10_shuffle_training.py:181|epoch 9 args.lr 2.000000e-01
+07-06/15:44:42|INFO |vfl_cifar10_shuffle_training.py:195|epoch:
+07-06/15:44:42|INFO |vfl_cifar10_shuffle_training.py:198|
+################################ Test Backdoor Shuffle Models with TestData ############################
+07-06/15:44:43|INFO |vfl_cifar10_shuffle_training.py:206|test_loss: 
+07-06/15:46:06|INFO |vfl_cifar10_shuffle_training.py:290|Namespace(data_dir='./data/CIFAR10/', dataset='CIFAR10', name='vfl_cifar10', batch_size=64, lr=0.2, trigger_lr=0.001, momentum=0.9, weight_decay=0.0005, report_freq=5, workers=8, epochs=100, layers=18, seed=1, grad_clip=5.0, gamma=0.97, decay_period=1, parallel=False, u_dim=64, k=2, resume='', start_epoch=0, save='./model/CIFAR10/base', step_gamma=0.1, stone1=50, stone2=85, half=16, backdoor=50, poison_epochs=80, target_class='plane', alpha=0.05, eps=1.0, marvell=False, max_norm=False, iso=False, gc=False, lap_noise=False, signSGD=False, iso_ratio=0.01, gc_ratio=0.01, lap_noise_ratio=0.01, poison_num=4, corruption_amp=5.0, backdoor_start=True, shuffle_epochs=10, c='configs/base/cifar10_bestattack.yml')
+07-06/15:46:06|INFO |vfl_cifar10_shuffle_training.py:291|cuda:0
+07-06/15:46:08|INFO |vfl_cifar10_shuffle_training.py:161|
+################################ Test Backdoor Models with TrainData ############################
+07-06/15:46:12|INFO |vfl_cifar10_shuffle_training.py:166|training_loss: 0.00048246947418898345, top1_acc: 99.71, top5_acc: 99.992
+07-06/15:46:12|INFO |vfl_cifar10_shuffle_training.py:168|
+################################ Test Backdoor Models with TestData ############################
+07-06/15:46:14|INFO |vfl_cifar10_shuffle_training.py:176|test_loss: 0.6694841189914279, top1_acc: 80.5, top5_acc: 97.87, test_asr_acc: 100.0
+07-06/15:46:14|INFO |vfl_cifar10_shuffle_training.py:178|
+################################ Shuffle Training with TrainData ############################
+07-06/15:46:14|INFO |vfl_cifar10_shuffle_training.py:180|epoch 0, args.lr 2.000000e-01
+07-06/15:46:26|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 1, train_loss: 10.712754249572754, test_loss: 0.011174218365550041, top1_acc: 80.04, top5_acc: 97.79, test_asr_acc: 100.0
+07-06/15:46:26|INFO |vfl_cifar10_shuffle_training.py:180|epoch 1, args.lr 2.000000e-01
+07-06/15:46:37|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 2, train_loss: 10.376511573791504, test_loss: 0.011112414160370827, top1_acc: 80.48, top5_acc: 97.85, test_asr_acc: 99.7
+07-06/15:46:37|INFO |vfl_cifar10_shuffle_training.py:180|epoch 2, args.lr 2.000000e-01
+07-06/15:46:49|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 3, train_loss: 8.666872024536133, test_loss: 0.011134922358393669, top1_acc: 80.39, top5_acc: 97.92, test_asr_acc: 100.0
+07-06/15:46:49|INFO |vfl_cifar10_shuffle_training.py:180|epoch 3, args.lr 2.000000e-01
+07-06/15:47:00|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 4, train_loss: 9.281393051147461, test_loss: 0.011101047679781914, top1_acc: 80.44, top5_acc: 97.89, test_asr_acc: 99.97777777777777
+07-06/15:47:00|INFO |vfl_cifar10_shuffle_training.py:180|epoch 4, args.lr 2.000000e-01
+07-06/15:47:11|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 5, train_loss: 8.550506591796875, test_loss: 0.011149321132898331, top1_acc: 80.28, top5_acc: 97.82, test_asr_acc: 99.95555555555555
+07-06/15:47:11|INFO |vfl_cifar10_shuffle_training.py:180|epoch 5, args.lr 2.000000e-01
+07-06/15:47:23|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 6, train_loss: 11.35598373413086, test_loss: 0.011010897159576417, top1_acc: 80.21, top5_acc: 97.88, test_asr_acc: 99.96666666666667
+07-06/15:47:23|INFO |vfl_cifar10_shuffle_training.py:180|epoch 6, args.lr 2.000000e-01
+07-06/15:47:33|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 7, train_loss: 8.85782241821289, test_loss: 0.011039464655518532, top1_acc: 80.45, top5_acc: 97.85, test_asr_acc: 99.45555555555555
+07-06/15:47:33|INFO |vfl_cifar10_shuffle_training.py:180|epoch 7, args.lr 2.000000e-01
+07-06/15:47:45|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 8, train_loss: 10.964526176452637, test_loss: 0.010979513743519784, top1_acc: 80.42, top5_acc: 97.86, test_asr_acc: 98.91111111111111
+07-06/15:47:45|INFO |vfl_cifar10_shuffle_training.py:180|epoch 8, args.lr 2.000000e-01
+07-06/15:47:56|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 9, train_loss: 10.249080657958984, test_loss: 0.011152801486849785, top1_acc: 80.17, top5_acc: 97.85, test_asr_acc: 99.9888888888889
+07-06/15:47:56|INFO |vfl_cifar10_shuffle_training.py:180|epoch 9, args.lr 2.000000e-01
+07-06/15:48:07|INFO |vfl_cifar10_shuffle_training.py:194|epoch: 10, train_loss: 8.740782737731934, test_loss: 0.011063511481881142, top1_acc: 80.27, top5_acc: 97.85, test_asr_acc: 99.9
+07-06/15:48:07|INFO |vfl_cifar10_shuffle_training.py:197|
+################################ Test Backdoor Shuffle Models with TestData ############################
+07-06/15:48:09|INFO |vfl_cifar10_shuffle_training.py:205|test_loss: 0.6662867245144314, top1_acc: 80.27, top5_acc: 97.85, test_asr_acc: 99.9

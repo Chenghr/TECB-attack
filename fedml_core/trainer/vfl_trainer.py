@@ -811,6 +811,65 @@ class VFLTrainer(ModelTrainer):
 
         return epoch_loss[0]
 
+    def train_shuffle(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
+        """
+        Train top model and bottom_model_a with shuffle labels.
+        """
+        model_list = self.model
+        model_list = [model.to(device) for model in model_list]
+        model_list = [model.train() for model in model_list]
+
+        # train and update
+        epoch_loss = []
+
+        for step, (trn_X, trn_y, indices) in enumerate(train_data):
+            if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
+                trn_X = trn_X.float().to(device)
+                Xa, Xb = split_data(trn_X, args)
+                target = trn_y.long().to(device)
+                # shuffle label here 
+                label_num = 100 if args.dataset is "CIFAR100" else 10
+                random_values = torch.randint(0, label_num, target.size()).long().to(device)
+                target = random_values
+            else:
+                raise ValueError("Not supported dataset.")
+
+            batch_loss = []
+
+            # bottom model B
+            output_tensor_bottom_model_b = model_list[1](Xb)
+            # bottom model A
+            output_tensor_bottom_model_a = model_list[0](Xa)
+
+            input_tensor_top_model_a = output_tensor_bottom_model_a.detach().clone()
+            input_tensor_top_model_b = output_tensor_bottom_model_b.detach().clone()
+            input_tensor_top_model_a.requires_grad_(True)
+            input_tensor_top_model_b.requires_grad_(True)
+
+            # top model
+            output = model_list[2](input_tensor_top_model_a, input_tensor_top_model_b)
+            # --top model backward/update--
+            loss = update_model_one_batch(optimizer=optimizer_list[2],
+                                          model=model_list[2],
+                                          output=output,
+                                          batch_target=target,
+                                          loss_func=criterion,
+                                          args=args)
+
+            # -- bottom model a backward/update--
+            grad_output_bottom_model_a = input_tensor_top_model_a.grad
+            _ = update_model_one_batch(optimizer=optimizer_list[0],
+                                       model=model_list[0],
+                                       output=output_tensor_bottom_model_a,
+                                       batch_target=grad_output_bottom_model_a,
+                                       loss_func=bottom_criterion,
+                                       args=args)
+
+            batch_loss.append(loss.item())
+        epoch_loss.append(sum(batch_loss) / len(batch_loss))
+
+        return epoch_loss[0]
+
     def extract_features(self, train_data, device, args):
         """
         从训练数据集中提取特征和标签。
