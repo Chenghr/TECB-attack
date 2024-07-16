@@ -77,7 +77,7 @@ def setup_logger(args):
     )
 
     # 添加文件日志处理器
-    log_dir =  os.path.join(args.save, "experiment.log")
+    log_dir =  os.path.join(args.save, args.log_file_name)
     logger.add(
         log_dir,
         format=formatter,

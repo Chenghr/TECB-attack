@@ -812,8 +812,7 @@ class VFLTrainer(ModelTrainer):
         return epoch_loss[0]
 
     def train_shuffle(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
-        """
-        Train top model and bottom_model_a with shuffle labels.
+        """Train top model and bottom_model_a with shuffle labels.
         """
         model_list = self.model
         model_list = [model.to(device) for model in model_list]
@@ -827,10 +826,6 @@ class VFLTrainer(ModelTrainer):
                 trn_X = trn_X.float().to(device)
                 Xa, Xb = split_data(trn_X, args)
                 target = trn_y.long().to(device)
-                # shuffle label here 
-                label_num = 100 if args.dataset is "CIFAR100" else 10
-                random_values = torch.randint(0, label_num, target.size()).long().to(device)
-                target = random_values
             else:
                 raise ValueError("Not supported dataset.")
 
@@ -858,12 +853,22 @@ class VFLTrainer(ModelTrainer):
 
             # -- bottom model a backward/update--
             grad_output_bottom_model_a = input_tensor_top_model_a.grad
+            grad_output_bottom_model_b = input_tensor_top_model_b.grad
+
             _ = update_model_one_batch(optimizer=optimizer_list[0],
                                        model=model_list[0],
                                        output=output_tensor_bottom_model_a,
                                        batch_target=grad_output_bottom_model_a,
                                        loss_func=bottom_criterion,
                                        args=args)
+            
+            if args.train_bottom_model_b:
+                _ = update_model_one_batch(optimizer=optimizer_list[1],
+                                        model=model_list[1],
+                                        output=output_tensor_bottom_model_b,
+                                        batch_target=grad_output_bottom_model_b,
+                                        loss_func=bottom_criterion,
+                                        args=args)
 
             batch_loss.append(loss.item())
         epoch_loss.append(sum(batch_loss) / len(batch_loss))
@@ -1098,8 +1103,8 @@ class VFLTrainer(ModelTrainer):
         top1_acc = 100. * correct / total
         top5_acc = 100. * top5_correct / total
 
-        print('Test set: Average loss: {:.4f}, Top-1 Accuracy: {}/{} ({:.4f}%), Top-5 Accuracy: {}/{} ({:.4f}%)'.format(
-            test_loss, correct, total, top1_acc, top5_correct, total, top5_acc))
+        # print('Test set: Average loss: {:.4f}, Top-1 Accuracy: {}/{} ({:.4f}%), Top-5 Accuracy: {}/{} ({:.4f}%)'.format(
+        #     test_loss, correct, total, top1_acc, top5_correct, total, top5_acc))
 
         return test_loss, top1_acc, top5_acc
 
@@ -1158,9 +1163,9 @@ class VFLTrainer(ModelTrainer):
         top1_acc = 100. * correct / total
         top5_acc = 100. * top5_correct / total
 
-        print(
-            'Backdoor Test set: Average loss: {:.4f}, ASR Top-1 Accuracy: {}/{} ({:.4f}%, ASR Top-5 Accuracy: {}/{} ({:.4f}%)'.format(
-                test_loss, correct, total, top1_acc, top5_correct, total, top5_acc))
+        # print(
+        #     'Backdoor Test set: Average loss: {:.4f}, ASR Top-1 Accuracy: {}/{} ({:.4f}%, ASR Top-5 Accuracy: {}/{} ({:.4f}%)'.format(
+        #         test_loss, correct, total, top1_acc, top5_correct, total, top5_acc))
 
         return test_loss, top1_acc, top5_acc
 

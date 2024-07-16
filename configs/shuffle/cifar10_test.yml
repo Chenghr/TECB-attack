@@ -1,0 +1,12 @@
+# dir
+save: ./model/CIFAR10/shuffle
+log_file_name: experiment.log
+
+# Hyperparameters
+# lr: 0.2
+lr: 0.2
+
+# shuffle
+shuffle_epochs: 5
+train_bottom_model_b: False
+shuffle_label_way: shuffle_label

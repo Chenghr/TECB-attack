@@ -1,0 +1,28 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug: shuffle_training",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "vfl_cifar10_shuffle_training.py", // ${file}
+            "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+            "args": [
+                "--save", "./model/CIFAR10/shuffle",
+                "--log_file_name", "debug.log",
+                "--shuffle_label_way", "none",
+                "--load_model", "0",
+                "--train_bottom_model_b", 
+                "--lr", "0.01",
+                "--shuffle_epochs", "10",
+                "--batch_size", "64",
+            ],
+            // The code is not customized for multi-GPU scenarios
+            "env": {"CUDA_VISIBLE_DEVICES": "0"}
+        },
+    ]
+}
