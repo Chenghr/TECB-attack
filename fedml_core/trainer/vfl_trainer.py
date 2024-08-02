@@ -166,15 +166,11 @@ class VFLTrainer(ModelTrainer):
                 Xa, Xb = split_data(trn_X, args)
                 target = trn_y.long().to(device)
             else:
-                # trn_X = [x.float().to(device) for x in trn_X]
                 Xa = trn_X[0].float().to(device)
                 Xb = trn_X[1].float().to(device)
                 target = trn_y.long().to(device)
-            # target = trn_y.float().to(device)
+                
             batch_loss = []
-
-            # input_tensor_top_model_a = torch.tensor([], requires_grad=True)
-            # input_tensor_top_model_b = torch.tensor([], requires_grad=True)
 
             # bottom model B
             output_tensor_bottom_model_b = model_list[1](Xb)
@@ -196,7 +192,6 @@ class VFLTrainer(ModelTrainer):
                                           loss_func=criterion,
                                           args=args)
 
-
             grad_output_bottom_model_a = input_tensor_top_model_a.grad
             grad_output_bottom_model_b = input_tensor_top_model_b.grad
 
@@ -216,10 +211,8 @@ class VFLTrainer(ModelTrainer):
                                        loss_func=bottom_criterion,
                                        args=args)
 
-            # logging.info('Update Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-            #     epoch, (batch_idx + 1) * self.args.batch_size, len(self.local_training_data) * self.args.batch_size,
-            #            100. * (batch_idx + 1) / len(self.local_training_data), loss.item()))
             batch_loss.append(loss.item())
+            
         epoch_loss.append(sum(batch_loss) / len(batch_loss))
 
         return epoch_loss[0]
@@ -1146,7 +1139,8 @@ class VFLTrainer(ModelTrainer):
                 # top model
                 output = model_list[2](output_tensor_bottom_model_a, output_tensor_bottom_model_b)
 
-                loss = criterion(output, target)
+                # update here.
+                loss = criterion(output, target_class)  
                 test_loss += loss.item()  # sum up batch loss
 
                 probs = F.softmax(output, dim=1)

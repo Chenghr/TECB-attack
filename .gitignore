@@ -1,5 +1,6 @@
 data/
 model/
+results/
 .idea/
 *.xml
 *.iml
