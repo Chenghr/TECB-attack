@@ -27,6 +27,7 @@ import logging
 import copy
 import random
 
+
 def save_checkpoint(state, is_best, save, checkpoint):
     filename = os.path.join(save, checkpoint)
     torch.save(state, filename)
@@ -307,13 +308,23 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser("vflmodelnet")
 
+    # 数据相关参数
     parser.add_argument('--data_dir', default="./data/CIFAR10/", help='location of the data corpus')
     parser.add_argument('-d', '--dataset', default='CIFAR10', type=str,
                         help='name of dataset',
                         choices=['CIFAR10', 'CIFAR100', 'TinyImageNet', 'CINIC10L', 'Yahoo', 'Criteo', 'BCW'])
+
+    # 模型相关参数
     parser.add_argument('--resume', default='./model/CIFAR10/base', type=str, metavar='PATH',
                         help='path to latest checkpoint (default: none)')
     parser.add_argument('--name', type=str, default='vfl_cifar10', help='experiment name')
+    parser.add_argument('--layers', type=int, default=18, help='total number of layers')
+    parser.add_argument('--u_dim', type=int, default=64, help='u layer dimensions')
+    parser.add_argument('--k', type=int, default=2, help='num of client')
+    parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+                        help='manual epoch number (useful on restarts)')
+
+    # 训练超参数
     parser.add_argument('--batch_size', type=int, default=64, help='batch size')
     parser.add_argument('--lr', type=float, default=0.2, help='init learning rate')
     parser.add_argument('--trigger_lr', type=float, default=0.001, help='init learning rate')
@@ -322,64 +333,43 @@ if __name__ == '__main__':
     parser.add_argument('--report_freq', type=float, default=5, help='report frequency')
     parser.add_argument('--workers', type=int, default=8, help='num of workers')
     parser.add_argument('--epochs', type=int, default=100, help='num of training epochs')
-    parser.add_argument('--layers', type=int, default=18, help='total number of layers')
-    parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--grad_clip', type=float, default=5., help='gradient clipping')
     parser.add_argument('--gamma', type=float, default=0.97, help='learning rate decay')
     parser.add_argument('--decay_period', type=int, default=1, help='epochs between two learning rate decays')
-    parser.add_argument('--parallel', action='store_true', default=False, help='data parallelism')
-    parser.add_argument('--u_dim', type=int, default=64, help='u layer dimensions')
-    parser.add_argument('--k', type=int, default=2, help='num of client')
-    parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
-                        help='manual epoch number (useful on restarts)')
-    parser.add_argument('--step_gamma', default=0.1, type=float, metavar='S',
-                        help='gamma for step scheduler')
-    parser.add_argument('--stone1', default=50, type=int, metavar='s1',
-                        help='stone1 for step scheduler')
-    parser.add_argument('--stone2', default=85, type=int, metavar='s2',
-                        help='stone2 for step scheduler')
-    parser.add_argument('--half', help='half number of features, generally seen as the adversary\'s feature num. '
-                                       'You can change this para (lower that party_num) to evaluate the sensitivity '
-                                       'of our attack -- pls make sure that the model to be resumed is '
-                                       'correspondingly trained.',
-                        type=int,
-                        default=16)  # choices=[16, 14, 32, 1->party_num]. CIFAR10-16, Liver-14, TinyImageNet-32
-    parser.add_argument('--backdoor', type=float, default=50, help='backdoor frequency')
-    parser.add_argument('--poison_epochs', type=int, default=80, help='backdoor frequency')
-    parser.add_argument('--target_class', type=str, default='plane', help='backdoor target class')
-    parser.add_argument('--alpha', type=float, default=0.05, help='uap learning rate decay')
-    parser.add_argument('--eps', type=float, default=1.0, help='uap clamp bound')
+    parser.add_argument('--step_gamma', default=0.1, type=float, metavar='S', help='gamma for step scheduler')
+    parser.add_argument('--stone1', default=50, type=int, metavar='s1', help='stone1 for step scheduler')
+    parser.add_argument('--stone2', default=85, type=int, metavar='s2', help='stone2 for step scheduler')
 
+    # 防御相关参数
     parser.add_argument('--marvell', action='store_true', default=False, help='marvell defense')
     parser.add_argument('--max_norm', action='store_true', default=False, help='maxnorm defense')
     parser.add_argument('--iso', action='store_true', default=False, help='iso defense')
     parser.add_argument('--gc', action='store_true', default=False, help='gc defense')
     parser.add_argument('--lap_noise', action='store_true', default=False, help='lap_noise defense')
     parser.add_argument('--signSGD', action='store_true', default=False, help='sign_SGD defense')
-
     parser.add_argument('--iso_ratio', type=float, default=0.01, help='iso defense ratio')
     parser.add_argument('--gc_ratio', type=float, default=0.01, help='gc defense ratio')
     parser.add_argument('--lap_noise_ratio', type=float, default=0.01, help='lap_noise defense ratio')
 
+    # 后门攻击相关参数
+    parser.add_argument('--backdoor', type=float, default=50, help='backdoor frequency')
+    parser.add_argument('--poison_epochs', type=int, default=80, help='backdoor frequency')
+    parser.add_argument('--target_class', type=str, default='plane', help='backdoor target class')
+    parser.add_argument('--alpha', type=float, default=0.05, help='uap learning rate decay')
+    parser.add_argument('--eps', type=float, default=1.0, help='uap clamp bound')
     parser.add_argument('--poison_num', type=int, default=4, help='num of poison data')
     parser.add_argument('--corruption_amp', type=float, default=5, help='amplication of corruption')
     parser.add_argument('--backdoor_start', action='store_true', default=True, help='backdoor')
 
+    # 其他参数
+    parser.add_argument('--parallel', action='store_true', default=False, help='data parallelism')
+    parser.add_argument('--half', type=int, default=16, help='half number of features, generally seen as the adversary\'s feature num. You can change this para (lower that party_num) to evaluate the sensitivity of our attack -- pls make sure that the model to be resumed is correspondingly trained.')
     parser.add_argument('--shuffle_epochs', type=int, default=50, help='epochs of shuffle training')
-    parser.add_argument('--shuffle_label_way', type=str, default="class_to_class", 
-                        choices=['random', 'class_to_class', 'none'], help='how to shuffle label')
-    parser.add_argument('--load_model', type=int, default=2, 
-                        help='1: load bottom_model_b; 2: load all; else: not load.')
-    # argparse 解析布尔参数时，如果直接传递字符串 “True” 或 “False”，会被解释为字符串类型而不是布尔类型。
-    # 通常，处理布尔参数的推荐方法是使用 store_true 和 store_false 动作。
+    parser.add_argument('--shuffle_label_way', type=str, default="class_to_class", choices=['random', 'class_to_class', 'none'], help='how to shuffle label')
+    parser.add_argument('--load_model', type=int, default=2, help='1: load bottom_model_b; 2: load all; else: not load.')
     parser.add_argument('--train_bottom_model_b', action='store_true', help='whether training bottom_model_b (default: False)')
-    
-    parser.add_argument('--save', default='./model/CIFAR10/baseline', type=str,
-                        metavar='PATH',
-                        help='path to save checkpoint (default: none)')
+    parser.add_argument('--save', default='./model/CIFAR10/baseline', type=str, metavar='PATH', help='path to save checkpoint (default: none)')
     parser.add_argument('--log_file_name', type=str, default="experiment.log", help='log name')
-
-    # config file
     parser.add_argument('--c', type=str, default='configs/shuffle/cifar10_test.yml', help='config file')
 
     args = parser.parse_args()
@@ -392,11 +382,13 @@ if __name__ == '__main__':
     logger = setup_logger(args)
 
     logger.info("")
-    shuffle_args_str = f"Running experiment with args: " + \
-        f"load_model={args.load_model}, train_bottom_model_b={args.train_bottom_model_b}, " + \
-        f"shuffle_label_way={args.shuffle_label_way}, lr={args.lr}, shuffle_epochs={args.shuffle_epochs}, batch_size={args.batch_size}"
+    shuffle_args_str = (
+        f"Running experiment with args: "
+        f"load_model={args.load_model}, train_bottom_model_b={args.train_bottom_model_b}, "
+        f"shuffle_label_way={args.shuffle_label_way}, lr={args.lr}, "
+        f"shuffle_epochs={args.shuffle_epochs}, batch_size={args.batch_size}"
+    )
     logger.info(shuffle_args_str)
-    
-    main(logger=logger, device=device, args=args)
 
+    main(logger=logger, device=device, args=args)
 

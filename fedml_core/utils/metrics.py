@@ -11,6 +11,7 @@ class ShuffleTrainMetric(object):
         self.main_task_loss = []
         self.backdoor_attack_loss = []
         self.main_task_acc = []
+        self.main_task_top5_acc = []
         self.backdoor_task_acc = []
 
         self.train_top1_acc = []
@@ -21,7 +22,7 @@ class ShuffleTrainMetric(object):
         self.asr_acc = []
 
     def update(self, shuffle_train_loss=None, shuffle_test_loss=None, main_task_loss=None, backdoor_task_loss=None,
-               main_task_acc=None, backdoor_task_acc=None,
+               main_task_acc=None, main_task_top5_acc=None, backdoor_task_acc=None,
                train_top1_acc=None, train_top5_acc=None, test_top1_acc=None, test_top5_acc=None, asr_acc=None
         ):
         if shuffle_train_loss is not None:
@@ -35,6 +36,8 @@ class ShuffleTrainMetric(object):
         
         if main_task_acc is not None:
             self.main_task_acc.append(main_task_acc)
+        if main_task_top5_acc is not None:
+            self.main_task_top5_acc.append(main_task_top5_acc)
         if backdoor_task_acc is not None:
             self.backdoor_task_acc.append(backdoor_task_acc)
 

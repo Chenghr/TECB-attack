@@ -5,6 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug: file",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+            "args": [
+            ],
+            // The code is not customized for multi-GPU scenarios
+            "env": {"CUDA_VISIBLE_DEVICES": "0"}
+        },
+        {
             "name": "Debug: shuffle_training",
             "type": "debugpy",
             "request": "launch",

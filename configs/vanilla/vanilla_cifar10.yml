@@ -1,11 +1,11 @@
 # dataset
-dataset: CIFAR100
-half: 16
+dataset: CIFAR10
+data_dir: ./data/CIFAR10/
+half: 32
 
 # dir
-data_dir: ./data/CIFAR100/
 resume: ''
-save: ./results/models/CIFAR100/base
+save: ./results/models/CIFAR10/vanilla
 
 # model
 report_freq: 5
@@ -14,7 +14,7 @@ workers: 8
 # backdoor
 backdoor: 50
 poison_epochs: 80
-target_class: apple
+target_class: plane
 poison_num: 4
 corruption_amp: 5.0
 backdoor_start: True

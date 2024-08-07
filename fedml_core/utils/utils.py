@@ -282,12 +282,16 @@ def over_write_args_from_file(args, yml):
     """
     Overwrite arguments according to config file
     """
-    if yml == '':
-        return
-    with open(yml, 'r', encoding='utf-8') as f:
-        dic = yaml.load(f, Loader=yaml.FullLoader)  # Use yaml.FullLoader for safety
-        for k in dic:
-            setattr(args, k, dic[k])
+    try:
+        if yml == '':
+            return
+        with open(yml, 'r', encoding='utf-8') as f:
+            dic = yaml.load(f, Loader=yaml.FullLoader)  # Use yaml.FullLoader for safety
+            for k in dic:
+                setattr(args, k, dic[k])
+    except Exception as e:
+        print(f"Error occurred: {e}")
+        exit(1)  # 非0状态码表示异常终止
 
 def image_format_2_rgb(x):
     return x.convert("RGB")

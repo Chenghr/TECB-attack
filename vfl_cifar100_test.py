@@ -155,7 +155,7 @@ if __name__ == '__main__':
                         help='path to latest checkpoint (default: none)')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
-    parser.add_argument('--save', default='./model/CIFAR100/baseline', type=str,
+    parser.add_argument('--save', default='./results/models/CIFAR100/base', type=str,
                         metavar='PATH',
                         help='path to save checkpoint (default: none)')
     parser.add_argument('--step_gamma', default=0.1, type=float, metavar='S',
