@@ -1,0 +1,28 @@
+dataset: CIFAR10
+half: 16
+
+# dir
+data_dir: ./data/CIFAR10/
+resume: ''
+save: ./model/CIFAR10/retrain
+
+# model
+report_freq: 5
+workers: 8
+
+# backdoor
+poison_budget: 0.1
+corruption_amp: 5.0
+backdoor_start: True
+optimal_sel: True
+window_size: 5
+saliency_map_injection: True
+
+# Hyperparameters
+lr: 0.2
+alpha: 0.05
+eps: 1.0
+epochs: 100
+batch_size: 64
+
+# best choice
