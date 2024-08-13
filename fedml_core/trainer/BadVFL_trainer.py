@@ -12,7 +12,7 @@ from sklearn.cluster import DBSCAN, KMeans
 from sklearn.preprocessing import normalize
 from sklearn.metrics import pairwise_distances
 from .model_trainer import ModelTrainer
-
+import torch.optim as optim
 
 def update_model_one_batch(optimizer, model, output, batch_target, loss_func, args):
     loss = loss_func(output, batch_target)
@@ -223,7 +223,7 @@ class BadVFLTrainer(ModelTrainer):
         target_num = np.sum(labels == classes.index(target_class))
         source_num = np.sum(labels == classes.index(source_class))
         poison_num = args.poison_budget * target_num
-        source_indices = np.where(labels == classes.index(source_class))
+        source_indices = np.where(labels == classes.index(source_class))[0]
         selected_indices = np.random.choice(source_indices, poison_num, replace=False)
         selected_features = features[selected_indices]
         selected_labels = labels[selected_indices]
@@ -258,7 +258,40 @@ class BadVFLTrainer(ModelTrainer):
                         best_position = (y, x)
             best_positions_dict[i] = best_position
         return best_position_dict
+
+    def train_trigger(self, train_data, device, source_indices, target_indices, best_position_dict, args):
+        victim_model = self.model[-2].eval().to(device)
+
+        features = []
+        labels = []
+        with torch.no_grad():
+            for step, (trn_X, trn_y, indices) in enumerate(train_data):
+                if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
+                    trn_X = trn_X.float().to(device)
+                    Xa, Xb = split_data(trn_X, args)
+                    target = trn_y.long().to(device)
+                else:
+                    Xa = trn_X[0].float().to(device)
+                    Xb = trn_X[1].float().to(device)
+                    target = trn_y.long().to(device)
+                output_tensor_bottom_model_b = victim_model(Xb + delta)
+                features.append(output_tensor_bottom_model_b.detach().cpu().numpy())
+                labels.append(target.detach().cpu().numpy())
+                
+        features = np.concatenate(features, axis=0)
+        source_features = features[source_indices]
+        target_features = features[target_indices]
+        delta = torch.zeros_like(source_features, requires_grad=True)
+        optimizer = optim.Adam([delta], lr=0.01)
         
+        for epoch in range(args.trigger_train_epochs)
+            optimizer.zero_grad()
+            loss = torch.norm(source_features - target_features, p = 'fro')
+            loss.backward()
+            optimizer.step()
+            delta = torch.clamp(delta, -args.eps, args.eps)
+        return delta
+
     def train_mul(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
         """
         正常 VFL 训练，原始训练数据的特征未拆分，在训练函数中进行拆分
