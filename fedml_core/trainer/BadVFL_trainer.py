@@ -63,8 +63,7 @@ def split_data(data, args):
         raise Exception('Unknown dataset name!')
     return x_a, x_b
 
-
-class VFLTrainer(ModelTrainer):
+class BadVFLTrainer(ModelTrainer):
     def get_model_params(self):
         return self.model.cpu().state_dict()
 
@@ -146,6 +145,62 @@ class VFLTrainer(ModelTrainer):
 
         return epoch_loss
 
+    def pre_train(self, train_data, criterion, optimizer_list, device, args):
+        """
+        假设本地已有标签，先得到本地的特征嵌入以及classifier的梯度，便于后续操作
+        这里用的模型与后续训练的不同，操作与train_mlu一致
+        """
+        model_list = self.model
+        model_list = [model.to(device) for model in model_list]
+        model_list = [model.train() for model in model_list]
+
+        # train and update
+        epoch_loss = []
+
+        for step, (trn_X, trn_y, indices) in enumerate(train_data):
+            if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
+                trn_X = trn_X.float().to(device)
+                Xa, Xb = split_data(trn_X, args)
+                target = trn_y.long().to(device)
+            else:
+                Xa = trn_X[0].float().to(device)
+                Xb = trn_X[1].float().to(device)
+                target = trn_y.long().to(device)
+                
+            batch_loss = []
+
+            # bottom model B
+            output_tensor_bottom_model_b = model_list[-2](Xb)
+            input_tensor_top_model_b = output_tensor_bottom_model_b.detach().clone()
+            input_tensor_top_model_b.requires_grad_(True)
+
+            # top model
+            output = model_list[-1](input_tensor_top_model_a, input_tensor_top_model_b)
+            # --top model backward/update--
+            loss = update_model_one_batch(optimizer=optimizer_list[-1],
+                                          model=model_list[-1],
+                                          output=output,
+                                          batch_target=target,
+                                          loss_func=criterion,
+                                          args=args)
+
+            grad_output_bottom_model_b = input_tensor_top_model_b.grad
+
+            # -- bottom model b backward/update--
+            _ = update_model_one_batch(optimizer=optimizer_list[-2],
+                                       model=model_list[-2],
+                                       output=output_tensor_bottom_model_b,
+                                       batch_target=grad_output_bottom_model_b,
+                                       loss_func=bottom_criterion,
+                                       args=args)
+
+            batch_loss.append(loss.item())
+            
+        epoch_loss.append(sum(batch_loss) / len(batch_loss))
+
+        return epoch_loss[0]
+        
+        
     def train_mul(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
         """
         正常 VFL 训练，原始训练数据的特征未拆分，在训练函数中进行拆分
