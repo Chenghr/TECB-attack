@@ -10,7 +10,7 @@ from fedml_core.utils.utils import AverageMeter, gradient_masking, gradient_gaus
     backdoor_truepostive_rate, gradient_compression, laplacian_noise_masking
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.preprocessing import normalize
-
+from sklearn.metrics import pairwise_distances
 from .model_trainer import ModelTrainer
 
 
@@ -145,7 +145,7 @@ class BadVFLTrainer(ModelTrainer):
 
         return epoch_loss
 
-    def pre_train(self, train_data, criterion, optimizer_list, device, args):
+    def pre_train(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
         """
         假设本地已有标签，先得到本地的特征嵌入以及classifier的梯度，便于后续操作
         这里用的模型与后续训练的不同，操作与train_mlu一致
@@ -175,9 +175,9 @@ class BadVFLTrainer(ModelTrainer):
             input_tensor_top_model_b.requires_grad_(True)
 
             # top model
-            output = model_list[-1](input_tensor_top_model_a, input_tensor_top_model_b)
+            output = model_list[-1](input_tensor_top_model_b)
             # --top model backward/update--
-            loss = update_model_one_batch(optimizer=optimizer_list[-1],
+            loss = update_model_one_batch(optimizer=optimizer_list[2],
                                           model=model_list[-1],
                                           output=output,
                                           batch_target=target,
@@ -187,7 +187,7 @@ class BadVFLTrainer(ModelTrainer):
             grad_output_bottom_model_b = input_tensor_top_model_b.grad
 
             # -- bottom model b backward/update--
-            _ = update_model_one_batch(optimizer=optimizer_list[-2],
+            _ = update_model_one_batch(optimizer=optimizer_list[1],
                                        model=model_list[-2],
                                        output=output_tensor_bottom_model_b,
                                        batch_target=grad_output_bottom_model_b,
@@ -199,7 +199,65 @@ class BadVFLTrainer(ModelTrainer):
         epoch_loss.append(sum(batch_loss) / len(batch_loss))
 
         return epoch_loss[0]
+
+    def pairwise_distance_min(self, train_data, device, args):
+        features, labels = extract_features(self, train_data, device, args)
+        #cifar-10
+        classes = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+        class_pairs = list(combinations(classes, 2))
+        pairwise_distances_dict = {}
+        for (class_a, class_b) in class_pairs:
+            class_a_embeddings = features[labels == classes.index(class_a)]
+            class_b_embeddings = features[labels == classes.index(class_b)]
+    
+            distances = pairwise_distances(class_a_embeddings, class_b_embeddings)
+    
+            avg_distance = distances.mean()
+            pairwise_distances_dict[(class_a, class_b)] = avg_distance
+        min_distance_pair = min(pairwise_distances_dict, key=pairwise_distances_dict.get)
+        return min_distance_pair[0], min_distance_pair[1]
+
+    def optimal_trigger_injection(self, train_data, criterion, optimizer_list, source_class, target_class, device, args):
+        features, labels = extract_features(self, train_data, device, args)
+        classes = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+        target_num = np.sum(labels == classes.index(target_class))
+        source_num = np.sum(labels == classes.index(source_class))
+        poison_num = args.poison_budget * target_num
+        source_indices = np.where(labels == classes.index(source_class))
+        selected_indices = np.random.choice(source_indices, poison_num, replace=False)
+        selected_features = features[selected_indices]
+        selected_labels = labels[selected_indices]
+
+        model_list = self.model
+        model_list = [model.to(device) for model in model_list]
+        model_list = [model.eval() for model in model_list]
+        input_tensor_top_model_b = selected_features.detach().clone()
+        input_tensor_top_model_b.requires_grad_(True)
+        best_positions_dict = {}
+        for i in range(poison_num):
+            output = model_list[-1](input_tensor_top_model_b[i])
+            loss = update_model_one_batch(optimizer=optimizer_list[2],
+                                              model=model_list[-1],
+                                              output=output,
+                                              batch_target=selected_labels[i],
+                                              loss_func=criterion,
+                                              args=args)
+            salency_map = input_tensor_top_model_b[i].grad.data.abs()
+            _, _, H, W = saliency_map.size()
+
+            max_avg_grad = 0
+            best_position = (0, 0)
         
+            for y in range(H - args.window_size + 1):
+                for x in range(W - args.window_size + 1):
+                    window_grad = saliency_map[i, :, y:y + args.window_size, x:x + args.window_size]
+                    avg_grad = window_grad.mean()
+
+                    if avg_grad > max_avg_grad:
+                        max_avg_grad = avg_grad
+                        best_position = (y, x)
+            best_positions_dict[i] = best_position
+        return best_position_dict
         
     def train_mul(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
         """
@@ -931,7 +989,7 @@ class BadVFLTrainer(ModelTrainer):
         - features: 从被动方模型中提取的样本的embedding，形状为 (num_samples, feature_dim)。
         - labels: 所有样本对应的标签，形状为 (num_samples,)。
         """
-        victim_model = self.model[1].eval().to(device)
+        victim_model = self.model[-2].eval().to(device)
 
         features = []
         labels = []
