@@ -202,6 +202,28 @@ class TopModelForCifar10(nn.Module):
         x = self.fc4top(F.relu(self.bn3top(x)))
         return F.log_softmax(x, dim=1)
 
+class LocalClassifierForCifar10(nn.Module):
+    def __init__(self):
+        super(TopModelForCifar10, self).__init__()
+        self.fc1top = nn.Linear(10, 20)
+        self.fc2top = nn.Linear(20, 10)
+        self.fc3top = nn.Linear(10, 10)
+        self.fc4top = nn.Linear(10, 10)
+        self.bn0top = nn.BatchNorm1d(10)
+        self.bn1top = nn.BatchNorm1d(20)
+        self.bn2top = nn.BatchNorm1d(10)
+        self.bn3top = nn.BatchNorm1d(10)
+
+        self.apply(weights_init)
+
+    def forward(self, input_tensor_top_model_a, input_tensor_top_model_b):
+        output_bottom_models = torch.cat((input_tensor_top_model_a, input_tensor_top_model_b), dim=1)
+        x = output_bottom_models
+        x = self.fc1top(F.relu(self.bn0top(x)))
+        x = self.fc2top(F.relu(self.bn1top(x)))
+        x = self.fc3top(F.relu(self.bn2top(x)))
+        x = self.fc4top(F.relu(self.bn3top(x)))
+        return F.log_softmax(x, dim=1)
 
 class VanillaBottomModelForCifar10(nn.Module):
     def __init__(self):
