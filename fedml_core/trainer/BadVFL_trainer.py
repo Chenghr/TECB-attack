@@ -217,7 +217,7 @@ class BadVFLTrainer(ModelTrainer):
         min_distance_pair = min(pairwise_distances_dict, key=pairwise_distances_dict.get)
         return min_distance_pair[0], min_distance_pair[1]
 
-    def optimal_trigger_injection(self, train_data, criterion, optimizer_list, source_indices, poison_num, device, args):
+    def optimal_trigger_injection(self, train_data, criterion, optimizer_list, selected_indices, poison_num, device, args):
         features, labels = extract_features(self, train_data, device, args)
         '''
         classes = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
@@ -225,8 +225,8 @@ class BadVFLTrainer(ModelTrainer):
         source_num = np.sum(labels == classes.index(source_class))
         poison_num = args.poison_budget * target_num
         source_indices = np.where(labels == classes.index(source_class))[0]
-        '''
         selected_indices = np.random.choice(source_indices, poison_num, replace=False)
+        '''
         selected_features = features[selected_indices]
         selected_labels = labels[selected_indices]
 
