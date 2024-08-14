@@ -177,7 +177,7 @@ class BadVFLTrainer(ModelTrainer):
             # top model
             output = model_list[-1](input_tensor_top_model_b)
             # --top model backward/update--
-            loss = update_model_one_batch(optimizer=optimizer_list[2],
+            loss = update_model_one_batch(optimizer=optimizer_list[-1],
                                           model=model_list[-1],
                                           output=output,
                                           batch_target=target,
@@ -187,7 +187,7 @@ class BadVFLTrainer(ModelTrainer):
             grad_output_bottom_model_b = input_tensor_top_model_b.grad
 
             # -- bottom model b backward/update--
-            _ = update_model_one_batch(optimizer=optimizer_list[1],
+            _ = update_model_one_batch(optimizer=optimizer_list[-2],
                                        model=model_list[-2],
                                        output=output_tensor_bottom_model_b,
                                        batch_target=grad_output_bottom_model_b,
@@ -238,7 +238,7 @@ class BadVFLTrainer(ModelTrainer):
         best_positions_dict = {}
         for i in range(poison_num):
             output = model_list[-1](input_tensor_top_model_b[i])
-            loss = update_model_one_batch(optimizer=optimizer_list[2],
+            loss = update_model_one_batch(optimizer=optimizer_list[-1],
                                               model=model_list[-1],
                                               output=output,
                                               batch_target=selected_labels[i],
