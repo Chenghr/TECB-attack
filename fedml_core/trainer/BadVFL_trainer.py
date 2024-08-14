@@ -261,11 +261,16 @@ class BadVFLTrainer(ModelTrainer):
             best_positions_dict[i] = best_position
         return best_position_dict
 
-    def train_trigger(self, train_data, device, source_indices, target_indices, best_position_dict, args):
+    def train_trigger(self, train_data, device, selected_source_indices, selected_target_indices, best_position_dict, args):
         victim_model = self.model[-2].eval().to(device)
 
         features = []
         labels = []
+        features = np.concatenate(features, axis=0)
+        source_features = features[source_indices]
+        target_features = features[target_indices]
+        delta = torch.zeros_like(source_features, requires_grad=True)
+        optimizer = optim.Adam([delta], lr=0.01)
         with torch.no_grad():
             for step, (trn_X, trn_y, indices) in enumerate(train_data):
                 if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
@@ -279,12 +284,6 @@ class BadVFLTrainer(ModelTrainer):
                 output_tensor_bottom_model_b = victim_model(Xb + delta)
                 features.append(output_tensor_bottom_model_b.detach().cpu().numpy())
                 labels.append(target.detach().cpu().numpy())
-                
-        features = np.concatenate(features, axis=0)
-        source_features = features[source_indices]
-        target_features = features[target_indices]
-        delta = torch.zeros_like(source_features, requires_grad=True)
-        optimizer = optim.Adam([delta], lr=0.01)
         
         for epoch in range(args.trigger_train_epochs)
             optimizer.zero_grad()
