@@ -17,14 +17,14 @@ backdoor_start: True
 optimal_sel: True
 window_size: 5
 saliency_map_injection: True
-trigger_train_epochs: 30
-pre_train_epochs: 30
+trigger_train_epochs: 70 
+pre_train_epochs: 50
 
 # Hyperparameters
-lr: 0.2
+lr: 0.02
 alpha: 0.05
-eps: 1.0
-epochs: 100
+eps: 0.5
+epochs: 50
 batch_size: 64
 
 # best choice
