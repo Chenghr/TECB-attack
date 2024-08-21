@@ -2,7 +2,7 @@ import logging
 import os
 import random
 import sys
-
+import copy
 import numpy as np
 from sklearn.utils import shuffle
 
@@ -30,6 +30,7 @@ import glob
 import shutil
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
+import torchvision.models as models
 from torch.utils.data import Subset
 import logging
 
@@ -101,6 +102,11 @@ def main(device, args):
             shuffle=True,
             num_workers=args.workers,
         )
+        train_queue_nobatch = torch.utils.data.DataLoader(
+            dataset=trainset,
+            batch_size=50000,
+            num_workers=args.workers,
+        )
         test_queue = torch.utils.data.DataLoader(
             dataset=testset, batch_size=args.batch_size, num_workers=args.workers
         )
@@ -111,7 +117,6 @@ def main(device, args):
         model_list.append(BottomModelForCifar10())
         model_list.append(TopModelForCifar10())
         model_list.append(BottomModelForCifar10())
-        model_list.append(LocalClassifierForCifar10())
 
         # optimizer and stepLR
         optimizer_list = [
@@ -123,6 +128,20 @@ def main(device, args):
             )
             for model in model_list
         ]
+
+        stone1 = args.stone1
+
+        lr_scheduler_top_model = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer_list[2], milestones=[stone1], gamma=args.step_gamma
+        )
+        lr_scheduler_a = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer_list[0], milestones=[stone1], gamma=args.step_gamma
+        )
+        lr_scheduler_b = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer_list[1], milestones=[stone1], gamma=args.step_gamma
+        )
+        # change the lr_scheduler to the one you want to use
+        lr_scheduler_list = [lr_scheduler_a, lr_scheduler_b, lr_scheduler_top_model]
 
         badvfltrainer = BadVFLTrainer(model_list)
 
@@ -141,20 +160,65 @@ def main(device, args):
                 device,
                 args,
             )
-        source_class, target_class = badvfltrainer.pairwise_distance_min(train_queue, device, args)
-        print("%s->%d", source_class, target_class)
+            print(train_loss)
+        source_class, target_class = badvfltrainer.pairwise_distance_min(train_queue_nobatch, device, args)
+        print(source_class, target_class)
         source_label = classes.index(source_class)
         target_label = classes.index(target_class)
         source_indices = np.where(np.array(trainset.targets) == source_label)[0]
         target_indices = np.where(np.array(trainset.targets) == target_label)[0]
         target_num = np.sum(np.array(trainset.targets) == target_label)
-        poison_num = args.poison_budget * target_num
-        selected_source_indices = np.random.choice(source_indices, poison_num, replace=False)
-        selected_target_indices = np.random.choice(target_indices, poison_num, replace=False)
+        poison_num = int(args.poison_budget * target_num)
+        selected_source_indices = np.sort(np.random.choice(source_indices, poison_num, replace=False))
+        selected_target_indices = np.sort(np.random.choice(target_indices, poison_num, replace=False))
+        selected_source_set = Subset(trainset, selected_source_indices)
+        selected_source_queue = torch.utils.data.DataLoader(
+            dataset=selected_source_set,
+            batch_size=args.batch_size,
+            num_workers=args.workers
+        )
         print(
             "################################ Train Trigger ############################"
         ) 
-        best_poison_dict = optimal_trigger_injection(train_queue, criterion, optimizer_list, source_indices, poison_num,
+        best_pos_dict = {}
+        best_pos_dict = badvfltrainer.optimal_trigger_injection(train_queue_nobatch, selected_source_indices, criterion, optimizer_list, device, args)
+        _, (x_val, y_val, index) = next(enumerate(train_queue))
+        print(best_pos_dict[0], best_pos_dict[1])
+        # delta = torch.zeros_like(x_val[1][1]).float().to(device)
+        delta = torch.full((500, 3, args.window_size, args.window_size), 0.0).to(device)
+        for epoch in range(args.trigger_train_epochs):
+            trigger_optimizer = torch.optim.SGD([delta], 0.05)
+            delta = badvfltrainer.train_trigger(train_queue_nobatch, device, selected_source_indices, 
+                                            selected_target_indices, delta, best_pos_dict, trigger_optimizer,args)
+            
+        poison_train_set = copy.deepcopy(trainset)
+        delta_upd = delta.permute(0, 2, 3, 1)
+        delta_upd = delta_upd * 255.0
+        delta_upd = delta_upd.to(torch.uint8)
+        for i in range(500):
+            by = best_pos_dict[i][0]
+            bx = best_pos_dict[i][1]
+            delta_exten = torch.zeros_like(torch.from_numpy(poison_train_set.data[selected_target_indices][i])).to(device)
+            delta_exten[by : by + args.window_size, bx + args.half : bx + args.window_size + args.half, :] = delta_upd[i].detach().clone()
+            poison_train_set.data[selected_target_indices][i] = np.clip(trainset.data[selected_source_indices][i] + delta_exten.cpu().numpy(), 0, 255)
+        poison_train_queue = torch.utils.data.DataLoader(
+            dataset=poison_train_set,
+            batch_size=args.batch_size,
+            num_workers=args.workers
+        )
+        poison_test_set = copy.deepcopy(testset)
+        poison_test_queue = torch.utils.data.DataLoader(
+            dataset=poison_test_set,
+            batch_size=args.batch_size,
+            num_workers=args.workers
+        )
+        non_target_indices = np.where(np.array(testset.targets) == source_label)[0]
+        source_poison_testset = Subset(poison_test_set, non_target_indices)
+        poison_source_test_queue = torch.utils.data.DataLoader(
+            dataset=source_poison_testset,
+            batch_size=args.batch_size,
+            num_workers=args.workers
+        )
 
         # optionally resume from a checkpoint
         if args.resume:
@@ -178,12 +242,6 @@ def main(device, args):
         )
         best_asr = 0.0
 
-        _, (x_val, y_val, index) = next(enumerate(train_queue))
-
-        # delta = torch.zeros_like(x_val[1][1]).float().to(device)
-        delta = torch.zeros((1, 3, x_val.shape[-2], args.half), device=device)
-        delta.requires_grad_(True)
-
         # Set a 9-pixel pattern to 1
         # delta[:, 0:3, 0:3] = 1
         for epoch in range(args.start_epoch, args.epochs):
@@ -191,43 +249,16 @@ def main(device, args):
 
             # train_loss, delta = vfltrainer.train_narcissus(train_queue, criterion, bottom_criterion,optimizer_list, device, args, delta, selected_indices, trigger_optimizer)
             if args.backdoor_start:
-                if (epoch + 1) < args.backdoor:
-                    # acc = vfltrainer.pesudo_label_predict(train_queue, device)
-                    # if epoch <20:
-                    # if args.backdoor:
-                    train_loss, delta = vfltrainer.train_narcissus(
-                        train_queue,
+                train_loss = badvfltrainer.train_mul(
+                        poison_train_queue,
                         criterion,
                         bottom_criterion,
                         optimizer_list,
                         device,
                         args,
-                        delta,
-                        selected_indices,
-                    )
-
-                elif (epoch + 1) >= args.backdoor and (epoch + 1) < args.poison_epochs:
-                    train_loss = vfltrainer.train_mul(
-                        train_queue,
-                        criterion,
-                        bottom_criterion,
-                        optimizer_list,
-                        device,
-                        args,
-                    )
-                else:
-                    train_loss = vfltrainer.train_poisoning(
-                        train_queue,
-                        criterion,
-                        bottom_criterion,
-                        optimizer_list,
-                        device,
-                        args,
-                        delta,
-                        selected_indices,
-                    )
+                )
             else:
-                train_loss = vfltrainer.train_mul(
+                train_loss = badvfltrainer.train_mul(
                     train_queue,
                     criterion,
                     bottom_criterion,
@@ -240,11 +271,11 @@ def main(device, args):
             lr_scheduler_list[1].step()
             lr_scheduler_list[2].step()
 
-            test_loss, top1_acc, top5_acc = vfltrainer.test_mul(
+            test_loss, top1_acc, top5_acc = badvfltrainer.test_mul(
                 test_queue, criterion, device, args
             )
-            _, test_asr_acc, _ = vfltrainer.test_backdoor_mul(
-                non_target_queue, criterion, device, args, delta, target_label
+            _, test_asr_acc, _ = badvfltrainer.test_backdoor_mul(
+                poison_source_test_queue, criterion, device, args, delta, target_label
             )
 
             print(
@@ -314,18 +345,18 @@ def main(device, args):
         else:
             print("=> no checkpoint found at '{}'".format(checkpoint_path))
 
-        vfltrainer.update_model(model_list)
+        badvfltrainer.update_model(model_list)
 
         txt_name = f"saved_result"
         savedStdout = sys.stdout
         with open(args.save + "/" + txt_name + ".txt", "a") as file:
             sys.stdout = file
-            test_loss, top1_acc, top5_acc = vfltrainer.test_mul(
+            test_loss, top1_acc, top5_acc = badvfltrainer.test_mul(
                 test_queue, criterion, device, args
             )
 
-            _, asr_top1_acc, _ = vfltrainer.test_backdoor_mul(
-                non_target_queue, criterion, device, args, delta, target_label
+            _, asr_top1_acc, _ = badvfltrainer.test_backdoor_mul(
+                poison_source_test_queue, criterion, device, args, delta, target_label
             )
             print(
                 "################################ Test each seed ############################"
@@ -485,7 +516,7 @@ if __name__ == "__main__":
         help="gamma for step scheduler",
     )
     parser.add_argument(
-        "--stone1", default=50, type=int, metavar="s1", help="stone1 for step scheduler"
+        "--stone1", default=30, type=int, metavar="s1", help="stone1 for step scheduler"
     )
     parser.add_argument(
         "--stone2", default=85, type=int, metavar="s2", help="stone2 for step scheduler"
@@ -503,9 +534,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--poison_epochs", type=float, default=20, help="backdoor frequency"
     )
-    parser.add_argument(
-        "--target_class", type=str, default="cat", help="backdoor target class"
-    )
+    # parser.add_argument(
+    #     "--target_class", type=str, default="cat", help="backdoor target class"
+    # )
     parser.add_argument(
         "--alpha", type=float, default=0.01, help="uap learning rate decay"
     )
@@ -548,7 +579,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--c",
         type=str,
-        default="configs/base/cifar10_bestattack.yml",
+        default="configs/BadVFL/cifar10_test.yml",
         help="config file",
     )
 
@@ -586,3 +617,7 @@ if __name__ == "__main__":
 
     # --- epoch: 99, batch: 200, loss: 0.09191526211798191, acc: 0.9636565918783608, auc: 0.9552342451916291
     # --- (0.9754657898538487, 0.7605652456769234, 0.8317858679682943, None)
+import logging
+import os
+import logging
+import os
