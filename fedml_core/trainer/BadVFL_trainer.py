@@ -56,7 +56,7 @@ def compute_correct_prediction(*, y_targets, y_prob_preds, threshold=0.5):
     return np.array(y_hat_lbls), [pred_pos_count, pred_neg_count, correct_count]
 
 
-class VanillaTrainer(VFLTrainer):
+class BadVFLTrainer(VFLTrainer):
     def extract_features(self, train_data, device, args):
         """
         从训练数据集中提取特征和标签。
@@ -197,7 +197,7 @@ class VanillaTrainer(VFLTrainer):
         return best_position
 
 
-    def train_trigger(self, train_data, device, selected_source_indices, selected_target_indices, delta, best_pos_dict, optimizer, args):
+    def train_trigger(self, train_data, device, selected_source_indices, selected_target_indices, delta, best_position, optimizer, args):
         # victim_model = self.model[-1].train().to(device)
         # modules = list(victim_model.children())[:-1]
         # feature_extractor = nn.Sequential(*modules)
@@ -307,7 +307,7 @@ class VanillaTrainer(VFLTrainer):
 
         return epoch_loss[0]
     
-    def test_backdoor_mul(self, test_data, criterion, device, args, delta, poison_target_label):
+    def test_backdoor_mul(self, test_data, criterion, device, args, delta, best_position, poison_target_label):
         """
         测试模型在添加后门攻击样本情况下的表现（ASR）。
         """
