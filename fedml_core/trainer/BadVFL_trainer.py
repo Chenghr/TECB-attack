@@ -157,10 +157,6 @@ class VanillaTrainer(VFLTrainer):
         model_list = self.model
         model_list = [model.to(device) for model in model_list]
         model_list = [model.eval() for model in model_list]
-        saliency_map_dict = {}
-        for y in range(32 - args.window_size + 1):
-                for x in range(16 - args.window_size + 1):
-                    saliency_map_dict[(y, x)] = 0
 
         for step, (trn_X, trn_y, indices) in enumerate(train_data):
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
@@ -176,37 +172,36 @@ class VanillaTrainer(VFLTrainer):
             source_mask = torch.from_numpy(np.isin(indices, selected_source_indices))
             Xb_source = Xb[source_mask].detach().clone()
             target_source = target[source_mask].detach().clone()
-            best_pos_dict = {}
-            for i in range(500):
-                Xb_eval = Xb_source[i].detach().clone()
-                Xb_eval.requires_grad_(True)
-                output = model_list[-1](Xb_eval.unsqueeze(0))
-                # --top model backward/update--
-                loss = criterion(output, target_source[i].unsqueeze(0))
-                optimizer_list[-1].zero_grad()
-                loss.backward()
+            Xb_source.requires_grad_(True)
+            output = model_list[-1](Xb_source)
+            # --top model backward/update--
+            loss = criterion(output, target_source)
+            optimizer_list[-1].zero_grad()
+            loss.backward()
 
-                saliency_map = Xb_eval.grad.data.abs()
-                _, H, W = saliency_map.size()
-                max_avg_grad = 0
-                best_position = (0, 0)
-        
-                for y in range(H - args.window_size + 1):
-                    for x in range(W - args.window_size + 1):
-                        window_grad = saliency_map[:, y:y + args.window_size, x:x + args.window_size]
-                        saliency_map_dict[(y, x)] += window_grad.mean()
+            saliency_map = Xb_source.grad.data.abs()
+            _,  _, H, W = saliency_map.size()
+            max_avg_grad = 0
+            best_position = (0, 0)
+            saliency_map_dict = {}
 
-                        if saliency_map_dict[(y, x)] > max_avg_grad:
-                            max_avg_grad = saliency_map_dict[(y, x)]
-                            best_position = (y, x)
+            for y in range(H - args.window_size + 1):
+                for x in range(W - args.window_size + 1):
+                    window_grad = saliency_map[:, y:y + args.window_size, x:x + args.window_size]
+                    saliency_map_dict[(y, x)] = window_grad.mean()
 
-                best_pos_dict[i] = best_position
-        return best_pos_dict
+                    if saliency_map_dict[(y, x)] > max_avg_grad:
+                        max_avg_grad = saliency_map_dict[(y, x)]
+                        best_position = (y, x)
+
+        return best_position
+
 
     def train_trigger(self, train_data, device, selected_source_indices, selected_target_indices, delta, best_pos_dict, optimizer, args):
-        victim_model = self.model[-1].train().to(device)
-        modules = list(victim_model.children())[:-1]
-        feature_extractor = nn.Sequential(*modules)
+        # victim_model = self.model[-1].train().to(device)
+        # modules = list(victim_model.children())[:-1]
+        # feature_extractor = nn.Sequential(*modules)
+        feature_extractor = self.model[-1].train().to(device)
         for param in feature_extractor.parameters():
             param.requires_grad = False
         delta.requires_grad_(True)
@@ -222,26 +217,25 @@ class VanillaTrainer(VFLTrainer):
             indices = indices.cpu().numpy()
             source_mask = torch.from_numpy(np.isin(indices, selected_source_indices))
             target_mask = torch.from_numpy(np.isin(indices, selected_target_indices))
-            Xb_source = Xb[source_mask].detach()            
+            Xb_source = Xb[source_mask].detach()
             Xb_target = Xb[target_mask].detach()
-            total_loss = 0
-            for i in range(500):
-                by = best_pos_dict[i][0]
-                bx = best_pos_dict[i][1]
-                batch_delta = torch.zeros_like(Xb_source[i]).to(device)
-                batch_delta[:, by : by + args.window_size, bx : bx + args.window_size] = delta[i].clone()
-                batch_delta.requires_grad_(True)
-                source_features = feature_extractor((Xb_source[i] + batch_delta).unsqueeze(0))
-                target_features = feature_extractor((Xb_target[i]).unsqueeze(0))
-                optimizer.zero_grad()
-                loss = torch.norm(source_features - target_features, p = 'fro') ** 2
-                total_loss += loss
-                loss.backward()
-                optimizer.step()
-                with torch.no_grad():
-                    delta[i] = torch.clamp(delta[i], -args.eps, args.eps)
-            print(total_loss/500)
+            by = best_position[0]
+            bx = best_position[1]
+            batch_delta = torch.zeros_like(Xb_source).to(device)
+            batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(500,-1, -1, -1)
+            # batch_delta.requires_grad_(True)
+            source_features = feature_extractor(Xb_source + batch_delta)
+            target_features = feature_extractor(Xb_target)
+            optimizer.zero_grad()
+            loss = torch.norm(source_features - target_features, p = 'fro') ** 2
+            loss = loss / 500
+            loss.backward()
+            optimizer.step()
+            with torch.no_grad():
+                delta = torch.clamp(delta, -args.eps, args.eps)
+            print(loss)
         return delta
+
 
     def train_mul(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
         """
@@ -343,8 +337,13 @@ class VanillaTrainer(VFLTrainer):
 
                 target_class = torch.tensor([poison_target_label]).repeat(target.shape[0]).to(device)
 
+                by = best_position[0]
+                bx = best_position[1]
+                batch_delta = torch.zeros_like(Xb).to(device)
+                batch_num = batch_delta.size(0)
+                batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(batch_num, -1, -1, -1)
                 # bottom model B
-                output_tensor_bottom_model_b = model_list[1](Xb)
+                output_tensor_bottom_model_b = model_list[1](Xb + batch_delta)
                 # bottom model A
                 output_tensor_bottom_model_a = model_list[0](Xa)
 
@@ -352,7 +351,7 @@ class VanillaTrainer(VFLTrainer):
                 output = model_list[2](output_tensor_bottom_model_a, output_tensor_bottom_model_b)
 
                 # update here.
-                loss = criterion(output, target_class)  
+                loss = criterion(output, target_class)
                 test_loss += loss.item()  # sum up batch loss
 
                 probs = F.softmax(output, dim=1)
