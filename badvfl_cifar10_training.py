@@ -225,6 +225,9 @@ def main(device, args, logger):
         bottom_criterion = keep_predict_loss
 
         # Pre-train
+        print(
+            "################################ Pre-Trained ############################"
+        )
         source_label, target_label, selected_source_indices, selected_target_indices = pre_train(trainset,
             badvfltrainer, train_queue, train_queue_nobatch, criterion, bottom_criterion, optimizer_list, device, args)
 
@@ -249,7 +252,7 @@ def main(device, args, logger):
         bx = best_position[1]
         delta_exten = torch.zeros_like(torch.from_numpy(poison_train_set.data[selected_target_indices])).to(device)
         delta_exten[:, by : by + args.window_size, bx + args.half : bx + args.window_size + args.half, :] = delta_upd.expand(500, -1, -1, -1).detach().clone()
-        selected_source_queue, poison_train_queue, poison_source_test_queue = set_dataset_poison(selected_source_indices, selected_target_indices, delta, source_label, args)
+        selected_source_queue, poison_train_queue, poison_source_test_queue = set_dataset_poison(selected_source_indices, selected_target_indices, delta_exten, source_label, args)
         print(
             "################################ Train Federated Models ############################"
         )
@@ -426,7 +429,7 @@ if __name__ == "__main__":
     # backdoor_group.add_argument("--poison_num", type=int, default=100, help="num of poison data")
     # backdoor_group.add_argument("--corruption_amp", type=float, default=10, help="amplification of corruption")
     backdoor_group.add_argument("--backdoor_start", action="store_true", default=False, help="backdoor")
-
+    
 
 
 
