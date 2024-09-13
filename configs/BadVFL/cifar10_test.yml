@@ -4,7 +4,7 @@ half: 16
 # dir
 data_dir: ./data/CIFAR10/
 resume: ''
-save: ./model/CIFAR10/retrain
+save: ./results/models/BadVFL/cifar10
 
 # model
 report_freq: 5

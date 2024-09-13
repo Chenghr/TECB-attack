@@ -208,7 +208,11 @@ def main(device, args, logger):
 
     for seed in range(5):
         set_seed(seed)
-
+        
+        save_model_dir = args.save + f"/seed={seed}_saved_models"
+        if not os.path.exists(save_model_dir):
+            os.makedirs(save_model_dir)
+            
         # Load data
         trainset, train_queue, train_queue_nobatch, test_queue = set_dataset_basic(args)
 
@@ -235,6 +239,10 @@ def main(device, args, logger):
             delta = badvfltrainer.train_trigger(train_queue_nobatch, device, selected_source_indices, 
                                             selected_target_indices, delta, best_position, trigger_optimizer, args)
         logger.info(f"best_position: {best_position}, delta: {delta}")
+        
+        torch.save(best_position, os.path.join(save_model_dir, "best_position.pth"))
+        torch.save(delta, os.path.join(save_model_dir, "delta.pth"))
+        
         # Set a 9-pixel pattern to 1
         # delta[:, 0:3, 0:3] = 1
         
@@ -248,10 +256,11 @@ def main(device, args, logger):
         delta_exten = torch.zeros_like(torch.from_numpy(poison_train_set.data[selected_target_indices])).to(device)
         delta_exten[:, by : by + args.window_size, bx + args.half : bx + args.window_size + args.half, :] = delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
         selected_source_queue, poison_train_queue, poison_source_test_queue = set_dataset_poison(selected_source_indices, selected_target_indices, delta_exten, source_label, args)
-        
+
         # Trian VFL
         logger.info("###### Train Federated Models ######") 
-        best_asr = 0.0
+        best_score, best_top1_acc, best_asr = 0.0, 0.0, 0.0
+        
         for epoch in range(args.start_epoch, args.epochs):
             logging.info("epoch %d args.lr %e ", epoch, args.lr)
 
@@ -281,24 +290,27 @@ def main(device, args, logger):
                 f"top1_acc: {top1_acc:.5f}, top5_acc: {top5_acc:.5f}, test_asr_acc: {test_asr_acc:.5f}"
             )
 
-            ## save partyA and partyB model parameters
             if not args.backdoor_start:
-                is_best = top1_acc >= best_asr
-                best_asr = max(top1_acc, best_asr)
+                is_best = top1_acc >= best_score
+                if is_best:
+                    best_score, best_top1_acc = top1_acc, top1_acc
             else:
-                total_value = test_asr_acc + top1_acc
-                is_best = total_value >= best_asr
-                best_asr = max(total_value, best_asr)
-
-            save_model_dir = args.save + f"/{seed}_saved_models"
-            if not os.path.exists(save_model_dir):
-                os.makedirs(save_model_dir)
+                # Dynamically adjust the weight over epochs
+                epoch_ratio = current_epoch / total_epochs
+                weight_asr = min(0.5 + 0.5 * epoch_ratio, 1.0)  # Example: gradually increase ASR importance
+                weight_top1 = 1.0 - weight_asr
+                total_value = weight_asr * test_asr_acc + weight_top1 * top1_acc
                 
+                is_best = total_value >= best_score
+                if is_best:
+                    best_score, best_top1_acc, best_asr = total_value, top1_acc, test_asr_acc
+
             if is_best:
                 save_checkpoint(
                     {
                         "epoch": epoch + 1,
-                        "best_auc": best_asr,
+                        "top1_acc": top1_acc,
+                        "test_asr_acc": test_asr_acc,
                         "state_dict": [
                             model_list[i].state_dict() for i in range(len(model_list))
                         ],
@@ -310,41 +322,24 @@ def main(device, args, logger):
                     save_model_dir,
                     "checkpoint_{:04d}.pth.tar".format(epoch),
                 )
-
-                torch.save(best_position, os.path.join(save_model_dir, "best_position.pth"))
-                torch.save(delta, os.path.join(save_model_dir, "delta.pth"))
-
-        # Load best model and test on test set
-        checkpoint_path = os.path.join(args.save, f"seed={seed}_saved_models", "model_best.pth.tar")
-        model_list = load_checkpoint(model_list, checkpoint_path, logger)
-        best_position = torch.load(os.path.join(save_model_dir, "best_position.pth"))
-        delta = torch.load(os.path.join(save_model_dir, "delta.pth"))
-        badvfltrainer.update_model(model_list)
+        
+        Main_Top1_acc.update(best_top1_acc)
+        ASR_Top1.update(best_asr)
 
         saved_stdout = sys.stdout
         with open(os.path.join(args.save, f"saved_result.txt"), "a") as file:
             sys.stdout = file
             
-            test_loss, top1_acc, top5_acc = badvfltrainer.test_mul(test_queue, criterion, device, args)
-            test_asr_loss, asr_top1_acc, _ = badvfltrainer.test_backdoor_mul(poison_source_test_queue, criterion, device, args, delta, best_position, target_label)
-            
             print(f"### Seed: {seed} ###")
-            print(f"Main Task: epoch: {epoch}, test_loss: {test_loss}, test_top1_acc: {top1_acc}, test_top5_acc: {top5_acc}")
-            print(f"Backdoor Task: epoch: {epoch}, test_loss: {test_asr_loss}, test_asr_top1_acc: {asr_top1_acc}")
-            
-            Main_Top1_acc.update(top1_acc)
-            Main_Top5_acc.update(top5_acc)
-            ASR_Top1.update(asr_top1_acc)
+            print(f"Best Top1 Acc: {best_top1_acc}")
+            print(f"Best Asr Acc: {best_asr}")
             
             if seed == 4:
                 print("### Final Result ###")
                 print(f"Main AVG Top1 acc: {Main_Top1_acc.avg}, Main STD Top1 acc: {Main_Top1_acc.std_dev()}")
-                print(f"Main AVG Top5 acc: {Main_Top5_acc.avg}, Main STD Top5 acc: {Main_Top5_acc.std_dev()}")
                 print(f"ASR AVG Top1 acc: {ASR_Top1.avg}, ASR STD Top1 acc: {ASR_Top1.std_dev()}")
             
             sys.stdout = saved_stdout
-
-        print("Last epoch evaluation saved to txt!")
 
 
 if __name__ == "__main__":
@@ -375,7 +370,7 @@ if __name__ == "__main__":
     training_group.add_argument("--weight_decay", type=float, default=5e-4, help="weight decay")
     training_group.add_argument("--report_freq", type=float, default=10, help="report frequency")
     training_group.add_argument("--workers", type=int, default=0, help="num of workers")
-    training_group.add_argument("--epochs", type=int, default=100, help="num of training epochs")
+    training_group.add_argument("--epochs", type=int, default=80, help="num of training epochs")
     training_group.add_argument("--grad_clip", type=float, default=5.0, help="gradient clipping")
     training_group.add_argument("--gamma", type=float, default=0.97, help="learning rate decay")
     training_group.add_argument("--decay_period", type=int, default=1, help="epochs between two learning rate decays")
@@ -395,15 +390,18 @@ if __name__ == "__main__":
 
     # 后门相关参数
     backdoor_group = parser.add_argument_group('Backdoor')
-    # backdoor_group.add_argument("--backdoor", type=float, default=20, help="backdoor frequency")
-    # backdoor_group.add_argument("--poison_epochs", type=float, default=20, help="backdoor frequency")
-    # backdoor_group.add_argument("--target_class", type=str, default="cat", help="backdoor target class")
-    backdoor_group.add_argument("--alpha", type=float, default=0.01, help="uap learning rate decay")
+    backdoor_group.add_argument("--alpha", type=float, default=0.02, help="uap learning rate decay")
     backdoor_group.add_argument("--eps", type=float, default=16 / 255, help="uap clamp bound")
-    # backdoor_group.add_argument("--poison_num", type=int, default=100, help="num of poison data")
-    # backdoor_group.add_argument("--corruption_amp", type=float, default=10, help="amplification of corruption")
+    backdoor_group.add_argument("--corruption_amp", type=float, default=5.0, help="amplification of corruption")
     backdoor_group.add_argument("--backdoor_start", action="store_true", default=False, help="backdoor")
-
+    backdoor_group.add_argument("--poison_budget", type=float, default=0.1, help="poison sample fraction")
+    backdoor_group.add_argument("--optimal_sel", action="store_true", default=True, help="optimal select tartget class")
+    backdoor_group.add_argument("--saliency_map_injection", action="store_true", default=True, help="optimal select trigger loaction")
+    backdoor_group.add_argument("--pre_train_epochs", default=20, type=int, metavar="N", help="")
+    backdoor_group.add_argument("--trigger_train_epochs", default=40, type=int, metavar="N", help="")
+    backdoor_group.add_argument("--window_size", default=3, type=int, metavar="N", help="")
+    
+    
     # 防御相关参数
     # defense_group = parser.add_argument_group('Defense')
     # defense_group.add_argument("--marvell", action="store_true", default=False, help="marvell defense")
@@ -422,9 +420,8 @@ if __name__ == "__main__":
 
     # 半特征相关参数
     feature_group = parser.add_argument_group('Feature')
-    feature_group.add_argument("--half", type=int, default=32, help="half number of features")
+    feature_group.add_argument("--half", type=int, default=16, help="half number of features")
 
-    # 参数覆盖写
     args = parser.parse_args()
     over_write_args_from_file(args, args.c)
 
