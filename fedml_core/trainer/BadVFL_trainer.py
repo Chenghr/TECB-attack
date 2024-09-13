@@ -146,19 +146,14 @@ class BadVFLTrainer(VFLTrainer):
         return min_distance_pair[0], min_distance_pair[1]
 
     def optimal_trigger_injection(self, train_data, selected_source_indices, criterion, optimizer_list, device, args):
-        '''
-        classes = ['plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-        target_num = np.sum(labels == classes.index(target_class))
-        source_num = np.sum(labels == classes.index(source_class))
-        poison_num = args.poison_budget * target_num
-        source_indices = np.where(labels == classes.index(source_class))[0]
-        selected_indices = np.random.choice(source_indices, poison_num, replace=False)
+        '''根据梯度，选择最优的后门植入位置
         '''
         model_list = self.model
         model_list = [model.to(device) for model in model_list]
         model_list = [model.eval() for model in model_list]
 
         for step, (trn_X, trn_y, indices) in enumerate(train_data):
+            # 这里会一次加载所有的数据
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                 trn_X = trn_X.float().to(device)
                 Xa, Xb = split_data(trn_X, args)
@@ -167,14 +162,15 @@ class BadVFLTrainer(VFLTrainer):
                 Xa = trn_X[0].float().to(device)
                 Xb = trn_X[1].float().to(device)
                 target = trn_y.long().to(device)
-            # top model
+                
             indices = indices.cpu().numpy()
             source_mask = torch.from_numpy(np.isin(indices, selected_source_indices))
             Xb_source = Xb[source_mask].detach().clone()
             target_source = target[source_mask].detach().clone()
             Xb_source.requires_grad_(True)
+            
+            # 使用最后一个模型，完整的 resnet 进行操作
             output = model_list[-1](Xb_source)
-            # --top model backward/update--
             loss = criterion(output, target_source)
             optimizer_list[-1].zero_grad()
             loss.backward()
@@ -185,6 +181,7 @@ class BadVFLTrainer(VFLTrainer):
             best_position = (0, 0)
             saliency_map_dict = {}
 
+            # 统计 windows size 内的梯度绝对值的和，以最大的梯度和作为最优位置
             for y in range(H - args.window_size + 1):
                 for x in range(W - args.window_size + 1):
                     window_grad = saliency_map[:, y:y + args.window_size, x:x + args.window_size]
@@ -198,14 +195,15 @@ class BadVFLTrainer(VFLTrainer):
 
 
     def train_trigger(self, train_data, device, selected_source_indices, selected_target_indices, delta, best_position, optimizer, args):
-        # victim_model = self.model[-1].train().to(device)
-        # modules = list(victim_model.children())[:-1]
-        # feature_extractor = nn.Sequential(*modules)
+        """优化式生成 trigger 的值.
+        """
         feature_extractor = self.model[-1].train().to(device)
+        
         for param in feature_extractor.parameters():
             param.requires_grad = False
         delta.requires_grad_(True)
-        for step, (trn_X, trn_y, indices) in enumerate(train_data):
+        
+        for step, (trn_X, trn_y, indices) in enumerate(train_data): # 一次加载所有的样本数目
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                 trn_X = trn_X.float().to(device)
                 Xa, Xb = split_data(trn_X, args)
@@ -214,6 +212,7 @@ class BadVFLTrainer(VFLTrainer):
                 Xa = trn_X[0].float().to(device)
                 Xb = trn_X[1].float().to(device)
                 target = trn_y.long().to(device)
+                
             indices = indices.cpu().numpy()
             source_mask = torch.from_numpy(np.isin(indices, selected_source_indices))
             target_mask = torch.from_numpy(np.isin(indices, selected_target_indices))
@@ -222,18 +221,23 @@ class BadVFLTrainer(VFLTrainer):
             by = best_position[0]
             bx = best_position[1]
             batch_delta = torch.zeros_like(Xb_source).to(device)
-            batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(500,-1, -1, -1)
-            # batch_delta.requires_grad_(True)
+            poison_num = len(selected_source_indices)
+            batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(poison_num,-1, -1, -1)
+            # batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(500,-1, -1, -1)
+            
             source_features = feature_extractor(Xb_source + batch_delta)
             target_features = feature_extractor(Xb_target)
             optimizer.zero_grad()
-            loss = torch.norm(source_features - target_features, p = 'fro') ** 2
-            loss = loss / 500
+            loss = torch.norm(source_features - target_features, p = 'fro') ** 2 
+            loss /= poison_num
+            # loss = loss / 500
+            
             loss.backward()
             optimizer.step()
             with torch.no_grad():
-                delta = torch.clamp(delta, -args.eps, args.eps)
-            print(loss)
+                delta = torch.clamp(delta, -args.eps, args.eps)    
+            # print(loss)
+            
         return delta
 
 
@@ -242,7 +246,7 @@ class BadVFLTrainer(VFLTrainer):
         正常 VFL 训练，原始训练数据的特征未拆分，在训练函数中进行拆分
 
         返回：
-        - epoch_loss：一个浮点数，表示当前 epoch 的平均损失。
+        - epoch_loss: 一个浮点数，表示当前 epoch 的平均损失
         """
         model_list = self.model
         model_list = [model.to(device) for model in model_list]
@@ -367,9 +371,5 @@ class BadVFLTrainer(VFLTrainer):
         test_loss = test_loss / total
         top1_acc = 100. * correct / total
         top5_acc = 100. * top5_correct / total
-
-        # print(
-        #     'Backdoor Test set: Average loss: {:.4f}, ASR Top-1 Accuracy: {}/{} ({:.4f}%, ASR Top-5 Accuracy: {}/{} ({:.4f}%)'.format(
-        #         test_loss, correct, total, top1_acc, top5_correct, total, top5_acc))
 
         return test_loss, top1_acc, top5_acc

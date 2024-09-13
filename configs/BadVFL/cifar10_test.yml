@@ -15,7 +15,7 @@ poison_budget: 0.1
 corruption_amp: 5.0
 backdoor_start: True
 optimal_sel: True
-window_size: 5
+window_size: 5  # trigger 安插位置大小
 saliency_map_injection: True
 trigger_train_epochs: 40 
 pre_train_epochs: 20
@@ -23,7 +23,7 @@ pre_train_epochs: 20
 # Hyperparameters
 lr: 0.02
 alpha: 0.05
-eps: 0.5
+eps: 0.5   # 限制 trigger 的大小
 epochs: 60 # model train spoch
 batch_size: 64
 

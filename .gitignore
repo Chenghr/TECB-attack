@@ -2,5 +2,7 @@ data/
 model/
 results/
 .idea/
+__pycache__/
 *.xml
 *.iml
+.pyc
