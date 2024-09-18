@@ -296,7 +296,7 @@ def main(device, args, logger):
                     best_score, best_top1_acc = top1_acc, top1_acc
             else:
                 # Dynamically adjust the weight over epochs
-                epoch_ratio = current_epoch / total_epochs
+                epoch_ratio = epoch / args.epochs
                 weight_asr = min(0.5 + 0.5 * epoch_ratio, 1.0)  # Example: gradually increase ASR importance
                 weight_top1 = 1.0 - weight_asr
                 total_value = weight_asr * test_asr_acc + weight_top1 * top1_acc
