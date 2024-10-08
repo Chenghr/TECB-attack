@@ -2,11 +2,6 @@
 dataset: CIFAR100
 half: 16
 
-# dir
-data_dir: ./data/CIFAR100/
-resume: ''
-save: ./results/models/CIFAR100/base
-
 # model
 report_freq: 5
 workers: 8

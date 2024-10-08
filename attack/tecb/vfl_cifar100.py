@@ -6,32 +6,30 @@ import sys
 import numpy as np
 from sklearn.utils import shuffle
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
-# from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
-from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
+import argparse
+import glob
+import logging
+import shutil
+import time
+
+# from fedml_api.utils.utils import save_checkpoint
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+from fedml_core.data_preprocessing.cifar100.dataset import IndexedCIFAR100
 from fedml_core.model.baseline.vfl_models import (
-    BottomModelForCifar10,
-    TopModelForCifar10,
+    BottomModelForCifar100,
+    TopModelForCifar100,
 )
-# from fedml_core.trainer.vfl_trainer import VFLTrainer
 from fedml_core.trainer.tecb_trainer import TECBTrainer
 from fedml_core.utils.utils import (
     AverageMeter,
     keep_predict_loss,
     over_write_args_from_file,
 )
-
-# from fedml_api.utils.utils import save_checkpoint
-import torch
-import torch.nn as nn
-import argparse
-import time
-import glob
-import shutil
-import torchvision.transforms as transforms
-from torchvision.datasets import CIFAR10
 from torch.utils.data import Subset
-import logging
+from torchvision.datasets import CIFAR100
 
 
 def save_checkpoint(state, is_best, save, checkpoint):
@@ -42,13 +40,13 @@ def save_checkpoint(state, is_best, save, checkpoint):
         shutil.copyfile(filename, best_filename)
 
 
-def main(device, args):
+def train(device, args):
     ASR_Top1 = AverageMeter()
     ASR_Top5 = AverageMeter()
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
 
-    for seed in [1]:
+    for seed in range(5):
         # random seed for 10 runs
         np.random.seed(seed)
         random.seed(seed)
@@ -57,60 +55,25 @@ def main(device, args):
 
         # load data
         # Data normalization and augmentation (optional)
-        train_transform = transforms.Compose(
-            [
-                # transforms.RandomHorizontalFlip(),
-                # transforms.RandomCrop(32, padding=4),
-                transforms.ToTensor(),
-                # transforms.Normalize((0.4914, 0.4822, 0.4465) , (0.2471, 0.2435, 0.2616))
-            ]
-        )
-        test_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
+        transform = transforms.Compose([transforms.ToTensor()])
 
         # Load CIFAR-10 dataset
-        # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
-        trainset = IndexedCIFAR10(
-            root="./data", train=True, download=True, transform=train_transform
+        trainset = IndexedCIFAR100(
+            root=args.data_dir, train=True, download=True, transform=transform
         )
-        testset = IndexedCIFAR10(
-            root="./data", train=False, download=True, transform=train_transform
-        )
-
-        # CIFAR-10 类别标签（以类别名称的列表形式给出）
-        classes = (
-            "plane",
-            "car",
-            "bird",
-            "cat",
-            "deer",
-            "dog",
-            "frog",
-            "horse",
-            "ship",
-            "truck",
+        testset = IndexedCIFAR100(
+            root=args.data_dir, train=False, download=True, transform=transform
         )
 
         # 选择你感兴趣的类别
-        target_class = args.target_class
-
-        # 找出这个类别的标签
-        target_label = classes.index(target_class)
-
-        # 找出所有属于这个类别的样本的索引
+        target_label = trainset.class_to_idx[args.target_class]
         target_indices = np.where(np.array(trainset.targets) == target_label)[0]
         non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
         non_target_set = Subset(testset, non_target_indices)
 
-        # 从目标索引中随机选择 poison_num 个索引, 作为毒样本
         selected_indices = np.random.choice(
             target_indices, args.poison_num, replace=False
         )
-
         train_queue = torch.utils.data.DataLoader(
             dataset=trainset,
             batch_size=args.batch_size,
@@ -126,9 +89,9 @@ def main(device, args):
 
         # build model
         model_list = []
-        model_list.append(BottomModelForCifar10())
-        model_list.append(BottomModelForCifar10())
-        model_list.append(TopModelForCifar10())
+        model_list.append(BottomModelForCifar100())
+        model_list.append(BottomModelForCifar100())
+        model_list.append(TopModelForCifar100())
 
         # optimizer and stepLR
         optimizer_list = [
@@ -141,8 +104,8 @@ def main(device, args):
             for model in model_list
         ]
 
-        stone1 = args.stone1  # 50 int(args.epochs * 0.5) 学习率衰减的epoch数
-        stone2 = args.stone2  # 85 int(args.epochs * 0.8) 学习率衰减的epoch数
+        stone1 = args.stone1  # 50 int(args.epochs * 0.5)
+        stone2 = args.stone2  # 85 int(args.epochs * 0.8)
         lr_scheduler_top_model = torch.optim.lr_scheduler.MultiStepLR(
             optimizer_list[2], milestones=[stone1, stone2], gamma=args.step_gamma
         )
@@ -155,9 +118,8 @@ def main(device, args):
         # change the lr_scheduler to the one you want to use
         lr_scheduler_list = [lr_scheduler_a, lr_scheduler_b, lr_scheduler_top_model]
 
-        # vfltrainer = VFLTrainer(model_list)
         vfltrainer = TECBTrainer(model_list)
-        
+
         criterion = nn.CrossEntropyLoss().to(device)
         bottom_criterion = keep_predict_loss
 
@@ -189,12 +151,9 @@ def main(device, args):
         delta = torch.zeros((1, 3, x_val.shape[-2], args.half), device=device)
         delta.requires_grad_(True)
 
-        # Set a 9-pixel pattern to 1
-        # delta[:, 0:3, 0:3] = 1
         for epoch in range(args.start_epoch, args.epochs):
             logging.info("epoch %d args.lr %e ", epoch, args.lr)
 
-            # train_loss, delta = vfltrainer.train_narcissus(train_queue, criterion, bottom_criterion,optimizer_list, device, args, delta, selected_indices, trigger_optimizer)
             if args.backdoor_start:
                 if (epoch + 1) < args.backdoor:
                     # acc = vfltrainer.pesudo_label_predict(train_queue, device)
@@ -210,7 +169,6 @@ def main(device, args):
                         delta,
                         selected_indices,
                     )
-
                 elif (epoch + 1) >= args.backdoor and (epoch + 1) < args.poison_epochs:
                     train_loss = vfltrainer.train(
                         train_queue,
@@ -248,7 +206,7 @@ def main(device, args):
             test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
             )
-            _, test_asr_acc, _ = vfltrainer.test_backdoor(
+            _, test_asr_acc, test_asr_acc5 = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
 
@@ -265,14 +223,15 @@ def main(device, args):
                 top5_acc,
                 "test_asr_acc: ",
                 test_asr_acc,
+                "test_asr_acc5: ",
+                test_asr_acc5,
             )
 
-            ## save partyA and partyB model parameters
             if not args.backdoor_start:
-                is_best = top1_acc >= best_asr
-                best_asr = max(top1_acc, best_asr)
+                is_best = top5_acc >= best_asr
+                best_asr = max(top5_acc, best_asr)
             else:
-                total_value = test_asr_acc + top1_acc
+                total_value = test_asr_acc5 + top5_acc
                 is_best = total_value >= best_asr
                 best_asr = max(total_value, best_asr)
 
@@ -299,7 +258,8 @@ def main(device, args):
 
                 backdoor_data = {
                     "delta": delta,
-                    "target_class": target_class,
+                    "source_label": -1,  #  tecb 是 source 无关的攻击方法
+                    "target_label": target_label,
                 }
                 torch.save(backdoor_data, os.path.join(save_model_dir, "backdoor.pth"))
 
@@ -333,7 +293,7 @@ def main(device, args):
                 test_queue, criterion, device, args
             )
 
-            _, asr_top1_acc, _ = vfltrainer.test_backdoor(
+            _, asr_top1_acc, asr_top5_acc = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
             print(
@@ -352,8 +312,8 @@ def main(device, args):
                 "################################ Backdoor Task ############################"
             )
             print(
-                "--- epoch: {0}, seed: {1}, test_loss: {2}, test_asr_top1_acc: {3} ---".format(
-                    epoch, seed, test_loss, asr_top1_acc
+                "--- epoch: {0}, seed: {1}, test_loss: {2}, test_asr_top1_acc: {3}, test_asr_top5_acc: {4} ---".format(
+                    epoch, seed, test_loss, asr_top1_acc, asr_top5_acc
                 )
             )
 
@@ -367,7 +327,7 @@ def main(device, args):
             Main_Top1_acc.update(top1_acc)
             Main_Top5_acc.update(top5_acc)
             ASR_Top1.update(asr_top1_acc)
-            # ASR_Top5.update(asr_top5_acc)
+            ASR_Top5.update(asr_top5_acc)
 
             if seed == 4:
                 print(
@@ -396,6 +356,10 @@ def main(device, args):
                     ASR_Top1.avg,
                     "ASR STD Top1 acc: ",
                     ASR_Top1.std_dev(),
+                    "ASR AVG Top5 acc: ",
+                    ASR_Top5.avg,
+                    "ASR STD Top5 acc: ",
+                    ASR_Top5.std_dev(),
                 )
 
             sys.stdout = savedStdout
@@ -403,22 +367,98 @@ def main(device, args):
         print("Last epoch evaluation saved to txt!")
 
 
+def test(device, args):
+    # 加载模型
+    save_model_dir = args.save
+    checkpoint_path = save_model_dir + "/model_best.pth.tar"
+    checkpoint = torch.load(checkpoint_path)
+
+    # 加载后门攻击信息
+    backdoor_data = torch.load(save_model_dir + "/backdoor.pth")
+    delta = backdoor_data.get("delta", None)
+    target_label = backdoor_data.get("target_label", None)
+
+    # load model
+    model_list = []
+    model_list.append(BottomModelForCifar100())
+    model_list.append(BottomModelForCifar100())
+    model_list.append(TopModelForCifar100())
+
+    criterion = nn.CrossEntropyLoss().to(device)
+    bottom_criterion = keep_predict_loss
+
+    for i in range(len(model_list)):
+        model_list[i].load_state_dict(checkpoint["state_dict"][i])
+
+    # load data
+    transform = transforms.Compose([transforms.ToTensor()])
+
+    # Load CIFAR-10 dataset
+    trainset = IndexedCIFAR100(
+        root=args.data_dir, train=True, download=True, transform=transform
+    )
+    testset = IndexedCIFAR100(
+        root=args.data_dir, train=False, download=True, transform=transform
+    )
+
+    target_indices = np.where(np.array(trainset.targets) == target_label)[0]
+    non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
+    non_target_set = Subset(testset, non_target_indices)
+
+    train_queue = torch.utils.data.DataLoader(
+        dataset=trainset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.workers,
+    )
+    test_queue = torch.utils.data.DataLoader(
+        dataset=testset, batch_size=args.batch_size, num_workers=args.workers
+    )
+    non_target_queue = torch.utils.data.DataLoader(
+        dataset=non_target_set, batch_size=args.batch_size, num_workers=args.workers
+    )
+
+    print(
+        "################################ Test Backdoor Models ############################"
+    )
+    vfltrainer = TECBTrainer(model_list)
+    test_loss, top1_acc, top5_acc = vfltrainer.test(test_queue, criterion, device, args)
+    _, test_asr_acc, test_asr_acc5 = vfltrainer.test_backdoor(
+        non_target_queue, criterion, device, args, delta, target_label
+    )
+
+    print(
+        "test_loss: ",
+        test_loss,
+        "top1_acc: ",
+        top1_acc,
+        "top5_acc: ",
+        top5_acc,
+        "test_asr_acc: ",
+        test_asr_acc,
+        "test_asr_acc5: ",
+        test_asr_acc5,
+    )
+
+
 if __name__ == "__main__":
     print("################################ Prepare Data ############################")
 
-    # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    default_config_path = os.path.abspath("./best_configs/cifar100_bestattack.yml")
+    default_data_path = os.path.abspath("../../data/")
+    default_save_path = os.path.abspath("../../results/models/TECB/cifar100")
+
+    # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(device)
 
     parser = argparse.ArgumentParser("vflmodelnet")
-
     parser.add_argument(
-        "--data_dir", default="./data/CIFAR10/", help="location of the data corpus"
+        "--data_dir", default=default_data_path, help="location of the data corpus"
     )
     parser.add_argument(
         "-d",
         "--dataset",
-        default="CIFAR10",
+        default="CIFAR100",
         type=str,
         help="name of dataset",
         choices=[
@@ -432,13 +472,10 @@ if __name__ == "__main__":
         ],
     )
     parser.add_argument(
-        "--name", type=str, default="vfl_cifar10", help="experiment name"
+        "--name", type=str, default="vfl_cifar100", help="experiment name"
     )
     parser.add_argument("--batch_size", type=int, default=1024, help="batch size")
     parser.add_argument("--lr", type=float, default=0.1, help="init learning rate")
-    parser.add_argument(
-        "--trigger_lr", type=float, default=0.001, help="init learning rate"
-    )
     parser.add_argument("--momentum", type=float, default=0.9, help="momentum")
     parser.add_argument("--weight_decay", type=float, default=5e-4, help="weight decay")
     parser.add_argument(
@@ -481,8 +518,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--save",
-        # default="./model/CIFAR10/baseline",
-        default="./results/models/TECB/cifar10",
+        default=default_save_path,
         type=str,
         metavar="PATH",
         help="path to save checkpoint (default: none)",
@@ -509,17 +545,6 @@ if __name__ == "__main__":
         type=int,
         default=16,
     )  # choices=[16, 14, 32, 1->party_num]. CIFAR10-16, Liver-14, TinyImageNet-32
-    parser.add_argument("--backdoor", type=float, default=20, help="backdoor frequency")
-    parser.add_argument(
-        "--poison_epochs", type=float, default=20, help="backdoor frequency"
-    )
-    parser.add_argument(
-        "--target_class", type=str, default="cat", help="backdoor target class"
-    )
-    parser.add_argument(
-        "--alpha", type=float, default=0.01, help="uap learning rate decay"
-    )
-    parser.add_argument("--eps", type=float, default=16 / 255, help="uap clamp bound")
 
     parser.add_argument(
         "--marvell", action="store_true", default=False, help="marvell defense"
@@ -553,14 +578,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--backdoor_start", action="store_true", default=False, help="backdoor"
     )
-
     # config file
-    parser.add_argument(
-        "--c",
-        type=str,
-        default="configs/base/cifar10_bestattack.yml",
-        help="config file",
-    )
+    parser.add_argument("--c", type=str, default=default_config_path)
 
     args = parser.parse_args()
     over_write_args_from_file(args, args.c)
@@ -588,8 +607,7 @@ if __name__ == "__main__":
     logger.info(args)
     logger.info(device)
 
-    main(device=device, args=args)
-
+    train(device=device, args=args)
     # reference training result:
     # --- epoch: 99, batch: 1547, loss: 0.11550658332804839, acc: 0.9359105089400196, auc: 0.8736984159409958
     # --- (0.9270889578726378, 0.5111934752243287, 0.5054099033579607, None)
