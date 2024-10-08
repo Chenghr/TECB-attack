@@ -81,14 +81,17 @@ class VillainTrainer(VFLTrainer):
             mask = mask_list[step]
             mask.requires_grad = False
             true_indices = torch.nonzero(mask).squeeze()
-            dropout_num = int(args.dropout_ratio * len(true_indices))
-            dropout_indices = true_indices[torch.randperm(len(true_indices))[:dropout_num]]
-            dropout_mask = np.copy(mask)
-            dropout_mask[dropout_indices] = False
-            delta_expanded = torch.zeros(dropout_mask.shape[0], 10)
-            delta_expanded[dropout_mask] = delta_vector * gamma
-            delta_expanded.requires_grad = False
-            input_tensor_top_model_b_poison = input_tensor_top_model_b + delta_expanded.to(device)
+            if true_indices.dim() == 0:
+                input_tensor_top_model_b_poison = input_tensor_top_model_b
+            else:
+                dropout_num = int(args.dropout_ratio * len(true_indices))
+                dropout_indices = true_indices[torch.randperm(len(true_indices))[:dropout_num]]
+                dropout_mask = np.copy(mask)
+                dropout_mask[dropout_indices] = False
+                delta_expanded = torch.zeros(dropout_mask.shape[0], 10)
+                delta_expanded[dropout_mask] = delta_vector * gamma
+                delta_expanded.requires_grad = False
+                input_tensor_top_model_b_poison = input_tensor_top_model_b + delta_expanded.to(device)
 
             # top model
             output = model_list[2](input_tensor_top_model_a, input_tensor_top_model_b_poison)
