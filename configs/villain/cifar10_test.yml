@@ -1,0 +1,3 @@
+dataset: CIFAR10
+half: 16
+corruption_amp: 5.0
