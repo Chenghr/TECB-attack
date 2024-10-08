@@ -347,7 +347,7 @@ class TECBTrainer(VFLTrainer):
 
         return epoch_loss
 
-    def test_backdoor_mul(
+    def test_backdoor(
         self, test_data, criterion, device, args, delta, poison_target_label
     ):
         """

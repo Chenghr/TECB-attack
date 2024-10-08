@@ -21,6 +21,33 @@ class IndexedCIFAR10(CIFAR10):
         return img, target, index
 
 
+class SelectedIndexedCIFAR10(Dataset):
+    def __init__(self, dataset, selected_indices, label_mapping=None):
+        """
+        :param dataset: IndexedCIFAR10 的实例
+        :param selected_indices: 要选择的样本索引列表
+        :param label_mapping: 标签映射关系，用于标签扰动训练
+        """
+        self.dataset = dataset
+        self.selected_indices = selected_indices
+        self.label_mapping = label_mapping
+
+    def __len__(self):
+        return len(self.selected_indices)
+
+    def __getitem__(self, idx):
+        # 通过 selected_indices 获取原始数据集中的索引
+        original_idx = self.selected_indices[idx]
+        img, target, index = self.dataset[original_idx]
+        if self.label_mapping is not None:  # 如果存在标签映射关系，则使用标签映射关系
+            target = self.label_mapping.get(target, target)
+        return img, target, index 
+
+    def set_label_mapping(self, label_mapping):
+        """设置标签映射, dataset 类不支持动态添加属性，需要通过函数实现
+        """
+        self.label_mapping = label_mapping
+
 class split_dataset(Dataset):
     def __init__(self, data):
         super(split_dataset, self).__init__()

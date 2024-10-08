@@ -8,12 +8,13 @@ from sklearn.utils import shuffle
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
 # from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
-from fedml_core.data_preprocessing.cifar10.dataset import IndexedCIFAR10
+from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
 from fedml_core.model.baseline.vfl_models import (
     BottomModelForCifar10,
     TopModelForCifar10,
 )
-from fedml_core.trainer.vfl_trainer import VFLTrainer
+# from fedml_core.trainer.vfl_trainer import VFLTrainer
+from fedml_core.trainer.tecb_trainer import TECBTrainer
 from fedml_core.utils.utils import (
     AverageMeter,
     keep_predict_loss,
@@ -47,7 +48,7 @@ def main(device, args):
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
 
-    for seed in range(5):
+    for seed in [1]:
         # random seed for 10 runs
         np.random.seed(seed)
         random.seed(seed)
@@ -154,8 +155,9 @@ def main(device, args):
         # change the lr_scheduler to the one you want to use
         lr_scheduler_list = [lr_scheduler_a, lr_scheduler_b, lr_scheduler_top_model]
 
-        vfltrainer = VFLTrainer(model_list)
-
+        # vfltrainer = VFLTrainer(model_list)
+        vfltrainer = TECBTrainer(model_list)
+        
         criterion = nn.CrossEntropyLoss().to(device)
         bottom_criterion = keep_predict_loss
 
@@ -210,7 +212,7 @@ def main(device, args):
                     )
 
                 elif (epoch + 1) >= args.backdoor and (epoch + 1) < args.poison_epochs:
-                    train_loss = vfltrainer.train_mul(
+                    train_loss = vfltrainer.train(
                         train_queue,
                         criterion,
                         bottom_criterion,
@@ -230,7 +232,7 @@ def main(device, args):
                         selected_indices,
                     )
             else:
-                train_loss = vfltrainer.train_mul(
+                train_loss = vfltrainer.train(
                     train_queue,
                     criterion,
                     bottom_criterion,
@@ -243,10 +245,10 @@ def main(device, args):
             lr_scheduler_list[1].step()
             lr_scheduler_list[2].step()
 
-            test_loss, top1_acc, top5_acc = vfltrainer.test_mul(
+            test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
             )
-            _, test_asr_acc, _ = vfltrainer.test_backdoor_mul(
+            _, test_asr_acc, _ = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
 
@@ -295,7 +297,11 @@ def main(device, args):
                     "checkpoint_{:04d}.pth.tar".format(epoch),
                 )
 
-                torch.save(delta, os.path.join(save_model_dir, "delta.pth"))
+                backdoor_data = {
+                    "delta": delta,
+                    "target_class": target_class,
+                }
+                torch.save(backdoor_data, os.path.join(save_model_dir, "backdoor.pth"))
 
         # test
         print(
@@ -323,11 +329,11 @@ def main(device, args):
         savedStdout = sys.stdout
         with open(args.save + "/" + txt_name + ".txt", "a") as file:
             sys.stdout = file
-            test_loss, top1_acc, top5_acc = vfltrainer.test_mul(
+            test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
             )
 
-            _, asr_top1_acc, _ = vfltrainer.test_backdoor_mul(
+            _, asr_top1_acc, _ = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
             print(
@@ -475,7 +481,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--save",
-        default="./model/CIFAR10/baseline",
+        # default="./model/CIFAR10/baseline",
+        default="./results/models/TECB/cifar10",
         type=str,
         metavar="PATH",
         help="path to save checkpoint (default: none)",
