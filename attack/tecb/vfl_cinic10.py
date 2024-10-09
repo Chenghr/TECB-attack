@@ -68,10 +68,12 @@ def train(device, args):
         )
 
         # Load CIFAR-10 dataset
-        trainset = CINIC10L(root=args.data_dir, split="train", transform=transform)
-        testset = CINIC10L(root=args.data_dir, split="test", transform=transform)
+        trainset = CINIC10L(root=args.data_dir, split="/train", transform=transform)
+        testset = CINIC10L(root=args.data_dir, split="/test", transform=transform)
 
-        target_label = trainset.class_to_idx[args.target_class]
+        classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+
+        target_label = classes.index(args.target_class)
         target_indices = np.where(np.array(trainset.targets) == target_label)[0]
         non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
         non_target_set = Subset(testset, non_target_indices)
@@ -414,8 +416,8 @@ def test(device, args):
     )
 
     # Load CIFAR-10 dataset
-    trainset = CINIC10L(root=args.data_dir, split="train", transform=transform)
-    testset = CINIC10L(root=args.data_dir, split="test", transform=transform)
+    trainset = CINIC10L(root=args.data_dir, split="/train", transform=transform)
+    testset = CINIC10L(root=args.data_dir, split="/test", transform=transform)
 
     target_indices = np.where(np.array(trainset.targets) == target_label)[0]
     non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
@@ -461,7 +463,7 @@ if __name__ == "__main__":
     # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     default_config_path = os.path.abspath("./best_configs/cinic10_bestattack.yml")
-    default_data_path = os.path.abspath("../../data/")
+    default_data_path = os.path.abspath("../../data/cinic/")
     default_save_path = os.path.abspath("../../results/models/TECB/cinic10")
 
     parser = argparse.ArgumentParser("vflmodelnet")
@@ -605,7 +607,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     over_write_args_from_file(args, args.c)
-
+    
     if not os.path.exists(args.save):
         os.makedirs(args.save)
 
@@ -629,8 +631,8 @@ if __name__ == "__main__":
     logger.info(args)
     logger.info(device)
 
-    train(device=device, args=args)
-    # test(device=device, args=args)
+    # train(device=device, args=args)
+    test(device=device, args=args)
 
     # reference training result:
     # --- epoch: 99, batch: 1547, loss: 0.11550658332804839, acc: 0.9359105089400196, auc: 0.8736984159409958

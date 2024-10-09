@@ -607,7 +607,8 @@ if __name__ == "__main__":
     logger.info(args)
     logger.info(device)
 
-    train(device=device, args=args)
+    # train(device=device, args=args)
+    test(device=device, args=args)
     # reference training result:
     # --- epoch: 99, batch: 1547, loss: 0.11550658332804839, acc: 0.9359105089400196, auc: 0.8736984159409958
     # --- (0.9270889578726378, 0.5111934752243287, 0.5054099033579607, None)
