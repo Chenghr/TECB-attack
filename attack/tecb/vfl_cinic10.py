@@ -29,7 +29,6 @@ from fedml_core.utils.utils import (
     over_write_args_from_file,
 )
 from torch.utils.data import Subset
-from torchvision.datasets import CIFAR100
 
 
 def save_checkpoint(state, is_best, save, checkpoint):
