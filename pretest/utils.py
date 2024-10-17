@@ -33,6 +33,15 @@ from torch.utils.data import Subset
 from torchvision.datasets import CIFAR10, CIFAR100
 
 
+def split_data(dataset, data, half=16):
+    if dataset in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+        x_a = data[:, :, :, 0 : half]
+        x_b = data[:, :, :, half : 32]
+    else:
+        raise Exception("Unknown dataset name!")
+    return x_a, x_b
+
+
 def load_tecb_cifar10(batch_size=32, workers=1):
     data_dir = "../data/"
     save_model_dir = "../results/models/TECB/cifar10/"
@@ -61,11 +70,14 @@ def load_tecb_cifar10(batch_size=32, workers=1):
         root=data_dir, train=False, download=True, transform=transform
     )
 
-    dataloader = torch.utils.data.DataLoader(
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset=trainset, batch_size=batch_size, num_workers=workers
+    )
+    test_dataloader = torch.utils.data.DataLoader(
         dataset=testset, batch_size=batch_size, num_workers=workers
     )
     
-    return model_list, delta, target_label, dataloader
+    return model_list, train_dataloader, test_dataloader, delta, target_label
 
 
 def load_tecb_cifar100(batch_size=32, workers=1):
@@ -96,11 +108,14 @@ def load_tecb_cifar100(batch_size=32, workers=1):
         root=data_dir, train=False, download=True, transform=transform
     )
 
-    dataloader = torch.utils.data.DataLoader(
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset=trainset, batch_size=batch_size, num_workers=workers
+    )
+    test_dataloader = torch.utils.data.DataLoader(
         dataset=testset, batch_size=batch_size, num_workers=workers
     )
     
-    return model_list, delta, target_label, dataloader
+    return model_list, train_dataloader, test_dataloader, delta, target_label
 
 
 def load_tecb_cinic10(batch_size=32, workers=1):
@@ -136,13 +151,17 @@ def load_tecb_cinic10(batch_size=32, workers=1):
     )
     trainset = CINIC10L(root=data_dir, split="/train", transform=transform)
     testset = CINIC10L(root=data_dir, split="/test", transform=transform)
-    dataloader = torch.utils.data.DataLoader(
+    
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset=trainset, batch_size=batch_size, num_workers=workers
+    )
+    test_dataloader = torch.utils.data.DataLoader(
         dataset=testset, batch_size=batch_size, num_workers=workers
     )
     
-    return model_list, delta, target_label, dataloader
+    return model_list, train_dataloader, test_dataloader, delta, target_label
 
 
 if __name__ == "__main__":
-    model_list, delta, target_label, dataloader = load_tecb_cinic10()
+    model_list, train_dataloader, test_dataloader, delta, target_label = load_tecb_cinic10()
     print(target_label)
