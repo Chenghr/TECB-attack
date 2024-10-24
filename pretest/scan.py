@@ -187,28 +187,59 @@ class SCAn:
 
 
     def calc_test(self, X, Su, Se, F, subg, u1, u2):
+        """
+        计算测试统计量
+        
+        Parameters:
+        -----------
+        X : np.ndarray
+            样本矩阵
+        Su, Se, F : np.ndarray
+            协方差矩阵和其逆矩阵
+        subg : np.ndarray
+            子群标记
+        u1, u2 : np.ndarray
+            两个子群的均值向量
+        
+        Returns:
+        --------
+        float
+            标量测试统计量
+        """
         N = X.shape[0]
         M = X.shape[1]
 
-        G = -np.linalg.pinv(N*Su+Se)
-        mu = np.zeros([1,M])
+        # 计算G矩阵
+        G = -np.linalg.pinv(N * Su + Se)
+        mu = np.zeros((1, M))
+        
+        # 计算mu
         for i in range(N):
-            vec = X[i]
-            dd = np.matmul(np.matmul(Se,G),np.transpose(vec))
-            mu = mu-dd
+            vec = X[i].reshape(1, -1)  # 确保vec是2D
+            dd = np.matmul(np.matmul(Se, G), vec.T)
+            mu = mu - dd.T
 
-        b1 = np.matmul(np.matmul(mu,F),np.transpose(mu)) - np.matmul(np.matmul(u1,F),np.transpose(u1))
-        b2 = np.matmul(np.matmul(mu,F),np.transpose(mu)) - np.matmul(np.matmul(u2,F),np.transpose(u2))
-        n1 = np.sum(subg>=0.5)
-        n2 = N-n1
-        sc = n1*b1+n2*b2
+        # 计算b1和b2
+        b1 = np.matmul(np.matmul(mu, F), mu.T) - np.matmul(np.matmul(u1.reshape(1, -1), F), u1.reshape(-1, 1))
+        b2 = np.matmul(np.matmul(mu, F), mu.T) - np.matmul(np.matmul(u2.reshape(1, -1), F), u2.reshape(-1, 1))
+        
+        # 计算子群大小
+        n1 = np.sum(subg >= 0.5)
+        n2 = N - n1
+        
+        # 初始化得分
+        sc = float(n1 * b1 + n2 * b2)  # 确保是标量
 
+        # 计算最终得分
         for i in range(N):
-            e1 = X[i]
+            e1 = X[i].reshape(1, -1)  # 确保e1是2D
             if subg[i] >= 0.5:
-                e2 = mu-u1
+                e2 = mu - u1.reshape(1, -1)
             else:
-                e2 = mu-u2
-            sc -= 2*np.matmul(np.matmul(e1,F),np.transpose(e2))
+                e2 = mu - u2.reshape(1, -1)
+            
+            term = 2 * np.matmul(np.matmul(e1, F), e2.T)
+            sc -= float(term)  # 确保减去的是标量
 
-        return sc/N
+        # 返回标准化的标量得分
+        return float(sc) / N  # 确保返回标量

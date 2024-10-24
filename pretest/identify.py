@@ -143,4 +143,4 @@ if __name__ == "__main__":
     # datasets = ["CIFAR10", "CIFAR100", "CINIC10L"]
     datasets = ["CIFAR10"]
     for dataset in datasets:
-        main(device, dataset, poison_ratio=0.1, u=2.0, save_dir="../results/pics/pretest/detect_target_label")
+        main(device, dataset, poison_ratio=0.2, u=2.0, save_dir="../results/pics/pretest/detect_target_label")
