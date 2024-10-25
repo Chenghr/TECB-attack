@@ -562,6 +562,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--backdoor", type=float, default=20, help="backdoor frequency")
     parser.add_argument(
+        "--poison_epochs", type=float, default=20, help="backdoor frequency"
+    )
+    parser.add_argument(
         "--target_class", type=str, default="cat", help="backdoor target class"
     )
     parser.add_argument(
@@ -605,7 +608,7 @@ if __name__ == "__main__":
     parser.add_argument("--c", type=str, default=default_config_path)
 
     args = parser.parse_args()
-    over_write_args_from_file(args, args.c)
+    # over_write_args_from_file(args, args.c)
     
     if not os.path.exists(args.save):
         os.makedirs(args.save)
@@ -630,8 +633,8 @@ if __name__ == "__main__":
     logger.info(args)
     logger.info(device)
 
-    # train(device=device, args=args)
-    test(device=device, args=args)
+    train(device=device, args=args)
+    # test(device=device, args=args)
 
     # reference training result:
     # --- epoch: 99, batch: 1547, loss: 0.11550658332804839, acc: 0.9359105089400196, auc: 0.8736984159409958
