@@ -454,7 +454,7 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
 
-    parser = argparse.ArgumentParser("vflmodelnet")
+    parser = argparse.ArgumentParser("tecb_cifar10")
 
     parser.add_argument(
         "--data_dir", default=default_data_path, help="location of the data corpus"
@@ -607,7 +607,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    over_write_args_from_file(args, args.c)
+    # over_write_args_from_file(args, args.c)
 
     if not os.path.exists(args.save):
         os.makedirs(args.save)
@@ -632,8 +632,8 @@ if __name__ == "__main__":
     logger.info(args)
     logger.info(device)
     
-    # train(device=device, args=args)
-    test(device=device, args=args)
+    train(device=device, args=args)
+    # test(device=device, args=args)
 
     # reference training result:
     # --- epoch: 99, batch: 1547, loss: 0.11550658332804839, acc: 0.9359105089400196, auc: 0.8736984159409958
