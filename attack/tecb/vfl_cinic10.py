@@ -45,172 +45,122 @@ def train(device, args):
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
 
-    for seed in range(1):
-        # random seed for 10 runs
+    for seed in range(3):
         np.random.seed(seed)
         random.seed(seed)
         torch.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
-        # load data
-        # Data normalization and augmentation (optional)
-        transform = transforms.Compose(
-            [
-                transforms.Lambda(image_format_2_rgb),
-                transforms.Resize((32, 32)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    (0.47889522, 0.47227842, 0.43047404),
-                    (0.24205776, 0.23828046, 0.25874835),
-                ),
-            ]
-        )
+        transform = transforms.Compose([
+            transforms.Lambda(image_format_2_rgb),
+            transforms.Resize((32, 32)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                (0.47889522, 0.47227842, 0.43047404),
+                (0.24205776, 0.23828046, 0.25874835)
+            )
+        ])
 
-        # Load CIFAR-10 dataset
         trainset = CINIC10L(root=args.data_dir, split="/train", transform=transform)
         testset = CINIC10L(root=args.data_dir, split="/test", transform=transform)
 
         classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
         target_label = classes.index(args.target_class)
         target_indices = np.where(np.array(trainset.targets) == target_label)[0]
         non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
         non_target_set = Subset(testset, non_target_indices)
 
-        # 从目标索引中随机选择10个索引
-        selected_indices = np.random.choice(
-            target_indices, args.poison_num, replace=False
-        )
+        selected_indices = np.random.choice(target_indices, args.poison_num, replace=False)
 
         train_queue = torch.utils.data.DataLoader(
             dataset=trainset,
             batch_size=args.batch_size,
             shuffle=True,
-            num_workers=args.workers,
+            num_workers=args.workers
         )
         test_queue = torch.utils.data.DataLoader(
-            dataset=testset, batch_size=args.batch_size, num_workers=args.workers
+            dataset=testset,
+            batch_size=args.batch_size,
+            num_workers=args.workers
         )
         non_target_queue = torch.utils.data.DataLoader(
-            dataset=non_target_set, batch_size=args.batch_size, num_workers=args.workers
+            dataset=non_target_set,
+            batch_size=args.batch_size,
+            num_workers=args.workers
         )
 
-        # build model
-        model_list = []
-        model_list.append(BottomModelForCinic10())
-        model_list.append(BottomModelForCinic10())
-        model_list.append(TopModelForCinic10())
+        model_list = [
+            BottomModelForCinic10(),
+            BottomModelForCinic10(),
+            TopModelForCinic10()
+        ]
 
-        # optimizer and stepLR
         optimizer_list = [
             torch.optim.SGD(
                 model.parameters(),
                 args.lr,
                 momentum=args.momentum,
-                weight_decay=args.weight_decay,
-            )
-            for model in model_list
+                weight_decay=args.weight_decay
+            ) for model in model_list
         ]
 
-        stone1 = args.stone1  # 50 int(args.epochs * 0.5)
-        stone2 = args.stone2  # 85 int(args.epochs * 0.8)
-        lr_scheduler_top_model = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer_list[2], milestones=[stone1, stone2], gamma=args.step_gamma
-        )
-        lr_scheduler_a = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer_list[0], milestones=[stone1, stone2], gamma=args.step_gamma
-        )
-        lr_scheduler_b = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer_list[1], milestones=[stone1, stone2], gamma=args.step_gamma
-        )
-        # change the lr_scheduler to the one you want to use
-        lr_scheduler_list = [lr_scheduler_a, lr_scheduler_b, lr_scheduler_top_model]
+        stone1, stone2 = args.stone1, args.stone2
+        lr_scheduler_list = [
+            torch.optim.lr_scheduler.MultiStepLR(
+                optimizer_list[0], milestones=[stone1, stone2], gamma=args.step_gamma
+            ),
+            torch.optim.lr_scheduler.MultiStepLR(
+                optimizer_list[1], milestones=[stone1, stone2], gamma=args.step_gamma
+            ),
+            torch.optim.lr_scheduler.MultiStepLR(
+                optimizer_list[2], milestones=[stone1, stone2], gamma=args.step_gamma
+            )
+        ]
 
         vfltrainer = TECBTrainer(model_list)
-
         criterion = nn.CrossEntropyLoss().to(device)
         bottom_criterion = keep_predict_loss
 
-        # optionally resume from a checkpoint
-        if args.resume:
-            if os.path.isfile(args.resume):
-                print("=> loading checkpoint '{}'".format(args.resume))
-                checkpoint = torch.load(args.resume, map_location=device)
-                args.start_epoch = checkpoint["epoch"]
-                for i in range(len(model_list)):
-                    model_list[i].load_state_dict(checkpoint["state_dict"][i])
-                    # optimizer_list[i].load_state_dict(checkpoint['optimizer'][i])
-                print(
-                    "=> loaded checkpoint '{}' (epoch {})".format(
-                        args.resume, checkpoint["epoch"]
-                    )
-                )
-            else:
-                print("=> no checkpoint found at '{}'".format(args.resume))
-
-        print(
-            "################################ Train Federated Models ############################"
-        )
-        best_asr = 0.0
-
-        _, (x_val, y_val, index) = next(enumerate(train_queue))
-
-        # delta = torch.zeros_like(x_val[1][1]).float().to(device)
-        delta = torch.zeros((1, 3, x_val.shape[-2], args.half), device=device)
+        if args.resume and os.path.isfile(args.resume):
+            checkpoint = torch.load(args.resume, map_location=device)
+            args.start_epoch = checkpoint["epoch"]
+            for i in range(len(model_list)):
+                model_list[i].load_state_dict(checkpoint["state_dict"][i])
+        
+        if args.dataset in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+            delta = torch.zeros((1, 3, 32, 32-args.half), device=device)
+        else:
+            raise ValueError("Unsupported dataset")
         delta.requires_grad_(True)
-
+        
+        best_asr = 0.0
         for epoch in range(args.start_epoch, args.epochs):
-            logging.info("epoch %d args.lr %e ", epoch, args.lr)
+            logging.info(f"Epoch {epoch}, Learning Rate: {args.lr:e}")
 
             if args.backdoor_start:
                 if (epoch + 1) < args.backdoor:
-                    # acc = vfltrainer.pesudo_label_predict(train_queue, device)
-                    # if epoch <20:
-                    # if args.backdoor:
-
                     train_loss, delta = vfltrainer.train_narcissus(
-                        train_queue,
-                        criterion,
-                        bottom_criterion,
-                        optimizer_list,
-                        device,
-                        args,
-                        delta,
-                        selected_indices,
+                        train_queue, criterion, bottom_criterion, optimizer_list,
+                        device, args, delta, selected_indices
                     )
                 elif (epoch + 1) >= args.backdoor and (epoch + 1) < args.poison_epochs:
                     train_loss = vfltrainer.train(
-                        train_queue,
-                        criterion,
-                        bottom_criterion,
-                        optimizer_list,
-                        device,
-                        args,
+                        train_queue, criterion, bottom_criterion,
+                        optimizer_list, device, args
                     )
                 else:
                     train_loss = vfltrainer.train_poisoning(
-                        train_queue,
-                        criterion,
-                        bottom_criterion,
-                        optimizer_list,
-                        device,
-                        args,
-                        delta,
-                        selected_indices,
+                        train_queue, criterion, bottom_criterion, optimizer_list,
+                        device, args, delta, selected_indices
                     )
             else:
                 train_loss = vfltrainer.train(
-                    train_queue,
-                    criterion,
-                    bottom_criterion,
-                    optimizer_list,
-                    device,
-                    args,
+                    train_queue, criterion, bottom_criterion,
+                    optimizer_list, device, args
                 )
 
-            lr_scheduler_list[0].step()
-            lr_scheduler_list[1].step()
-            lr_scheduler_list[2].step()
+            for scheduler in lr_scheduler_list:
+                scheduler.step()
 
             test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
@@ -219,22 +169,13 @@ def train(device, args):
                 non_target_queue, criterion, device, args, delta, target_label
             )
 
-            print(
-                "epoch:",
-                epoch + 1,
-                "train_loss:",
-                train_loss,
-                "test_loss: ",
-                test_loss,
-                "top1_acc: ",
-                top1_acc,
-                "top5_acc: ",
-                top5_acc,
-                "test_asr_acc: ",
-                test_asr_acc,
-                "test_asr_acc5: ",
-                test_asr_acc5,
-            )
+            print(f"Epoch: {epoch + 1:3d} | "
+                  f"Train Loss: {train_loss:.4f} | "
+                  f"Test Loss: {test_loss:.4f} | "
+                  f"Top1 Acc: {top1_acc:.2f}% | "
+                  f"Top5 Acc: {top5_acc:.2f}% | "
+                  f"ASR Top1: {test_asr_acc:.2f}% | "
+                  f"ASR Top5: {test_asr_acc5:.2f}%")
 
             if not args.backdoor_start:
                 is_best = top1_acc >= best_asr
@@ -244,94 +185,52 @@ def train(device, args):
                 is_best = total_value >= best_asr
                 best_asr = max(total_value, best_asr)
 
-            save_model_dir = args.save + f"/{seed}_saved_models"
-            if not os.path.exists(save_model_dir):
-                os.makedirs(save_model_dir)
+            save_model_dir = os.path.join(args.save, f"{seed}_saved_models")
+            os.makedirs(save_model_dir, exist_ok=True)
+
             if is_best:
-                save_checkpoint(
-                    {
-                        "epoch": epoch + 1,
-                        "best_auc": best_asr,
-                        "state_dict": [
-                            model_list[i].state_dict() for i in range(len(model_list))
-                        ],
-                        "optimizer": [
-                            optimizer_list[i].state_dict()
-                            for i in range(len(optimizer_list))
-                        ],
-                    },
-                    is_best,
-                    save_model_dir,
-                    "checkpoint_{:04d}.pth.tar".format(epoch),
-                )
+                save_checkpoint({
+                    "epoch": epoch + 1,
+                    "best_auc": best_asr,
+                    "state_dict": [model.state_dict() for model in model_list],
+                    "optimizer": [opt.state_dict() for opt in optimizer_list]
+                }, is_best, save_model_dir, f"checkpoint_{epoch:04d}.pth.tar")
 
                 backdoor_data = {
                     "delta": delta,
-                    "source_label": -1,  #  tecb 是 source 无关的攻击方法
-                    "target_label": target_label,
+                    "source_label": -1,
+                    "target_label": target_label
                 }
                 torch.save(backdoor_data, os.path.join(save_model_dir, "backdoor.pth"))
 
-        # test
-        print(
-            "##################################test############################################"
-        )
-
-        # load best model and test on test set
-        checkpoint_path = args.save + f"/{seed}_saved_models" + "/model_best.pth.tar"
+        print("Testing Best Model")
+        checkpoint_path = os.path.join(args.save, f"{seed}_saved_models", "model_best.pth.tar")
+        
         if os.path.isfile(checkpoint_path):
-            print("=> loading checkpoint '{}'".format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
-            for i in range(len(model_list)):
-                model_list[i].load_state_dict(checkpoint["state_dict"][i])
-            print(
-                "=> loaded checkpoint '{}' (epoch {})".format(
-                    checkpoint_path, checkpoint["epoch"]
-                )
-            )
-        else:
-            print("=> no checkpoint found at '{}'".format(checkpoint_path))
-
+            for i, model in enumerate(model_list):
+                model.load_state_dict(checkpoint["state_dict"][i])
+        
         vfltrainer.update_model(model_list)
 
-        txt_name = f"saved_result"
-        savedStdout = sys.stdout
-        with open(args.save + "/" + txt_name + ".txt", "a") as file:
+        with open(os.path.join(args.save, "saved_result.txt"), "a") as file:
             sys.stdout = file
             test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
             )
-
             _, asr_top1_acc, asr_top5_acc = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
-            print(
-                "################################ Test each seed ############################"
-            )
-            print(
-                "################################ Main Task ############################"
-            )
-            print(
-                "--- epoch: {0}, seed: {1},test_loss: {2}, test_top1_acc: {3}, test_top5_acc: {4} ---".format(
-                    epoch, seed, test_loss, top1_acc, top5_acc
-                )
-            )
 
-            print(
-                "################################ Backdoor Task ############################"
-            )
-            print(
-                "--- epoch: {0}, seed: {1}, test_loss: {2}, test_asr_top1_acc: {3}, test_asr_top5_acc: {4} ---".format(
-                    epoch, seed, test_loss, asr_top1_acc, asr_top5_acc
-                )
-            )
+            print("\nTest Results (Seed {})".format(seed))
+            print("Main Task Metrics:")
+            print(f"Loss: {test_loss:.4f} | "
+                  f"Top1: {top1_acc:.2f}% | "
+                  f"Top5: {top5_acc:.2f}%")
 
-            print(
-                "################################ End Task ############################"
-            )
-            print(
-                "######################################################################"
-            )
+            print("Backdoor Task Metrics:")
+            print(f"ASR Top1: {asr_top1_acc:.2f}% | "
+                  f"ASR Top5: {asr_top5_acc:.2f}%\n")
 
             Main_Top1_acc.update(top1_acc)
             Main_Top5_acc.update(top5_acc)
@@ -339,42 +238,18 @@ def train(device, args):
             ASR_Top5.update(asr_top5_acc)
 
             if seed == 4:
-                print(
-                    "################################ Final Result ############################"
-                )
+                print("Final Results Summary")
+                print("Main Model Performance:")
+                print(f"Top1: {Main_Top1_acc.avg:.2f}% ± {Main_Top1_acc.std_dev():.2f}%")
+                print(f"Top5: {Main_Top5_acc.avg:.2f}% ± {Main_Top5_acc.std_dev():.2f}%")
+                
+                print("Backdoor Performance:")
+                print(f"ASR Top1: {ASR_Top1.avg:.2f}% ± {ASR_Top1.std_dev():.2f}%")
+                print(f"ASR Top5: {ASR_Top5.avg:.2f}% ± {ASR_Top5.std_dev():.2f}%")
 
-                print(
-                    "################################ Main Model ############################"
-                )
-                print(
-                    "Main AVG Top1 acc: ",
-                    Main_Top1_acc.avg,
-                    "Main STD Top1 acc: ",
-                    Main_Top1_acc.std_dev(),
-                    "Main AVG Top5 acc: ",
-                    Main_Top5_acc.avg,
-                    "Main STD Top5 acc: ",
-                    Main_Top5_acc.std_dev(),
-                )
+            sys.stdout = sys.__stdout__
 
-                print(
-                    "################################ Backdoor Model ############################"
-                )
-                print(
-                    "ASR AVG Top1 acc: ",
-                    ASR_Top1.avg,
-                    "ASR STD Top1 acc: ",
-                    ASR_Top1.std_dev(),
-                    "ASR AVG Top5 acc: ",
-                    ASR_Top5.avg,
-                    "ASR STD Top5 acc: ",
-                    ASR_Top5.std_dev(),
-                )
-
-            sys.stdout = savedStdout
-
-        print("Last epoch evaluation saved to txt!")
-
+        print(f"Results for seed {seed} saved to file")
 
 def test(device, args):
     # 加载模型

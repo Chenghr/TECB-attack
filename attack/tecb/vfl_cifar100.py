@@ -148,7 +148,10 @@ def train(device, args):
         _, (x_val, y_val, index) = next(enumerate(train_queue))
 
         # delta = torch.zeros_like(x_val[1][1]).float().to(device)
-        delta = torch.zeros((1, 3, x_val.shape[-2], args.half), device=device)
+        if args.dataset in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+            delta = torch.zeros((1, 3, 32, 32-args.half), device=device)
+        else:
+            raise ValueError
         delta.requires_grad_(True)
 
         for epoch in range(args.start_epoch, args.epochs):

@@ -10,7 +10,7 @@ BASE_SAVE_PATH="${PROJECT_ROOT}/../results/models/TECB/cifar10"
 SCRIPT_PATH="${PROJECT_ROOT}/../attack/tecb/vfl_cifar10.py"
 
 # half参数列表
-HALF_VALUES=(1 4 8 12 16 24)
+HALF_VALUES=(1 4 8 12 24)
 
 for half in "${HALF_VALUES[@]}"; do
     save_path="${BASE_SAVE_PATH}/half_${half}"
