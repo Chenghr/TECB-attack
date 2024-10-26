@@ -20,5 +20,5 @@ python ${SCRIPT_PATH} \
     --model_dir ${MODEL_DIR} \
     --half ${HALF} \
     --epochs 20 \
-    --lr 0.0005 \
+    --lr 0.00005 \
     --batch_size 128 \
