@@ -52,28 +52,36 @@ class PermutedTrainer(VFLTrainer):
             # top model
             output = model_list[2](input_tensor_top_model_a, input_tensor_top_model_b)
             
-            # --top model backward/update--
-            loss = self.update_model_one_batch(
-                optimizer=optimizer_list[2],
-                model=model_list[2],
-                output=output,
-                batch_target=target,
-                loss_func=criterion,
-                args=args,
-            )
+            # Update based on mode
+            if args.update_mode in ['top_only', 'both']:
+                # Update top model
+                loss = self.update_model_one_batch(
+                    optimizer=optimizer_list[2],
+                    model=model_list[2],
+                    output=output,
+                    batch_target=target,
+                    loss_func=criterion,
+                    args=args,
+                )
+                grad_output_bottom_model_a = input_tensor_top_model_a.grad
 
-            grad_output_bottom_model_a = input_tensor_top_model_a.grad
-
-            # -- bottom model a (active party) backward/update--
-            _ = self.update_model_one_batch(
-                optimizer=optimizer_list[0],
-                model=model_list[0],
-                output=output_tensor_bottom_model_a,
-                batch_target=grad_output_bottom_model_a,
-                loss_func=bottom_criterion,
-                args=args,
-            )
-
+            if args.update_mode in ['bottom_only', 'both']:
+                # Update bottom model
+                if args.update_mode == 'bottom_only':
+                    # 如果只更新bottom，需要单独计算loss和梯度
+                    loss = criterion(output, target)
+                    loss.backward()
+                    grad_output_bottom_model_a = input_tensor_top_model_a.grad
+                
+                _ = self.update_model_one_batch(
+                    optimizer=optimizer_list[0],
+                    model=model_list[0],
+                    output=output_tensor_bottom_model_a,
+                    batch_target=grad_output_bottom_model_a,
+                    loss_func=bottom_criterion,
+                    args=args,
+                )
+                
             batch_loss.append(loss.item())
 
         epoch_loss = sum(batch_loss) / len(batch_loss)

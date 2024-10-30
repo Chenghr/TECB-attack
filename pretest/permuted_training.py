@@ -38,7 +38,9 @@ def permuted_validate(args, device, logger):
         f"Epochs: {args.epochs}, "
         f"LR: {args.lr}, "
         f"Batch Size: {args.batch_size}, "
-        f"Half: {args.half}"
+        f"Attack Features: {32-args.half}, "
+        f"Half: {args.half}, "
+        f"Update Mode: {args.update_mode}"
     )
     
     train_dataloader, test_dataloader = load_dataset(args.dataset, args.data_dir, args.batch_size)
@@ -84,11 +86,21 @@ def permuted_validate(args, device, logger):
         # 使用tqdm.write避免进度条显示混乱
         tqdm.write(f"Epoch {epoch+1}: Acc={modified_clean_top1:.2f}%, ASR={modified_asr_top1:.2f}%")
     
+    # 将所有数值保留两位小数
+    main_task_acc = [f"{x:.2f}" for x in main_task_acc]
+    main_task_acc_top5 = [f"{x:.2f}" for x in main_task_acc_top5]
+    asr_acc = [f"{x:.2f}" for x in asr_acc]
+    asr_acc_top5 = [f"{x:.2f}" for x in asr_acc_top5]
+    
     # 记录完整的准确率列表
-    logger.info("=== Final Results ===")
-    logger.info(f"Main Task Accuracy List: {main_task_acc}")
-    logger.info(f"Main Task Top5 Accuracy List: {main_task_acc_top5}")
-    logger.info(f"ASR List: {asr_acc} \n")
+    FORMAT = "{:<25}: {}"
+    logger.info("=" * 60)
+    logger.info("Final Results")
+    logger.info("=" * 60)
+    logger.info(FORMAT.format("Main Task Accuracy", ", ".join(main_task_acc)))
+    logger.info(FORMAT.format("Main Task Top5 Accuracy", ", ".join(main_task_acc_top5)))
+    logger.info(FORMAT.format("ASR", ", ".join(asr_acc)))
+    logger.info("=" * 60+"\n")
      
 
 if __name__ == "__main__":
@@ -124,6 +136,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=256)
     parser.add_argument("--momentum", type=float, default=0.7, help="momentum")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="weight decay")
+    parser.add_argument("--update_mode", type=str, default='both',
+                        choices=['bottom_only', 'top_only', 'both'], help='Model update mode: bottom_only, top_only, or both')
     
     args = parser.parse_args()
 

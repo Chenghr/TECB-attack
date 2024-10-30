@@ -40,7 +40,7 @@ def train(device, args):
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
 
-    for seed in [1]:
+    for seed in [0, 1, 2]:
         # random seed for 10 runs
         np.random.seed(seed)
         random.seed(seed)
