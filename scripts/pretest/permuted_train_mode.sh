@@ -27,6 +27,6 @@ for update_mode in "${UPDATE_MODE[@]}"; do
         --half ${HALF} \
         --epochs 30 \
         --lr 1e-1 \
-        --batch_size 128 \
+        --batch_size 128 \  
         --update_mode $update_mode 
 done

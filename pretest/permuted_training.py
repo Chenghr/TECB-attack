@@ -40,7 +40,8 @@ def permuted_validate(args, device, logger):
         f"Batch Size: {args.batch_size}, "
         f"Attack Features: {32-args.half}, "
         f"Half: {args.half}, "
-        f"Update Mode: {args.update_mode}"
+        f"Update Mode: {args.update_mode}, "
+        f"Update Top Layers: {args.update_top_layers}"
     )
     
     train_dataloader, test_dataloader = load_dataset(args.dataset, args.data_dir, args.batch_size)
@@ -59,7 +60,7 @@ def permuted_validate(args, device, logger):
         )
         for model in trainer.perturbed_model
     ]
-    
+    optimizer_list=trainer.update_optimizer_for_layers(trainer.perturbed_model, optimizer_list, args)
     delta = backdoor_data.get("delta", None)
     target_label = backdoor_data.get("target_label", None)
     
@@ -138,6 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="weight decay")
     parser.add_argument("--update_mode", type=str, default='both',
                         choices=['bottom_only', 'top_only', 'both'], help='Model update mode: bottom_only, top_only, or both')
+    parser.add_argument("--update_top_layers", type=str, nargs='+', default=['all'])
     
     args = parser.parse_args()
 

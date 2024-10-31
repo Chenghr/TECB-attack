@@ -129,3 +129,54 @@ class PermutedTrainer(VFLTrainer):
         perturbed_target = mask + (mask >= target).long()
         
         return perturbed_target
+    
+    @staticmethod
+    def update_optimizer_for_layers(model_list, optimizer_list, args):
+        """
+        为指定的层更新优化器
+        
+        Args:
+            model_list: 模型集合
+            optimizer_list: 优化器列表
+            args: 包含更新层设置的参数
+        
+        Returns:
+            optimizer_list: 更新后的优化器列表
+        """
+        params_to_update = []
+        
+        # 确保参数存在且有效
+        if not hasattr(args, 'update_top_layers'):
+            print("Warning: update_top_layers not found in args, using default 'all'")
+            args.update_top_layers = ['all']
+        
+        for name, param in model_list[2].named_parameters():
+            should_update = False
+            
+            if args.update_top_layers == ['all'] or args.update_top_layers == 'all':
+                should_update = True
+            elif isinstance(args.update_top_layers, str):
+                should_update = args.update_top_layers in name
+            elif isinstance(args.update_top_layers, (list, tuple)):
+                should_update = any(layer in name for layer in args.update_top_layers)
+            
+            if should_update:
+                param.requires_grad = True
+                params_to_update.append(param)
+                print(f"Layer {name} will be updated")
+            else:
+                param.requires_grad = False
+                print(f"Layer {name} will be frozen")
+        
+        # 检查是否有参数要更新
+        if not params_to_update:
+            print("Warning: No parameters selected for update!")
+        
+        # 重新定义优化器
+        if hasattr(args, 'lr'):
+            optimizer_list[2] = torch.optim.Adam(params_to_update, lr=args.lr)
+        else:
+            print("Warning: Learning rate not found in args!")
+            optimizer_list[2] = torch.optim.Adam(params_to_update)
+        
+        return optimizer_list
