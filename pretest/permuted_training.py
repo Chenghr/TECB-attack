@@ -60,7 +60,10 @@ def permuted_validate(args, device, logger):
         )
         for model in trainer.perturbed_model
     ]
-    optimizer_list=trainer.update_optimizer_for_layers(trainer.perturbed_model, optimizer_list, args)
+    
+    if args.update_mode != "bottom_only":
+        optimizer_list=trainer.update_optimizer_for_layers(trainer.perturbed_model, optimizer_list, args)
+    
     delta = backdoor_data.get("delta", None)
     target_label = backdoor_data.get("target_label", None)
     
