@@ -7,6 +7,11 @@ from sklearn.utils import shuffle
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
 import argparse
+from typing import Tuple, List
+import torch
+from torch.utils.data import DataLoader
+import numpy as np
+import copy
 
 import torch
 import torch.nn as nn
@@ -258,27 +263,110 @@ def sample_poisoned_source_target_data(dataset, source_label, target_label, pois
         
     return selected_source_indices, selected_target_indices, selected_dataloader
 
-def poison_target_dataset(dataset_name, trainset, selected_source_indices, selected_target_indices, delta, best_position, 
-                          args):
-    if dataset_name in ["CIFAR10", "CIFAR100", "CINIC10L"]:
-        delta_upd = delta.permute(0, 2, 3, 1)
-        delta_upd = delta_upd * 255.0
-        delta_upd = delta_upd.to(torch.uint8)
-        by = best_position[0]
-        bx = best_position[1]
-        delta_exten = torch.zeros_like(torch.from_numpy(trainset.data[selected_target_indices])).to(args.device)
-        delta_exten[:, by : by + args.window_size, bx + args.half : bx + args.window_size + args.half, :] = delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
-    else:
-        raise ValueError
+def construct_poison_train_dataloader(
+    dataloader: DataLoader,
+    dataset_name: str,
+    selected_source_indices: List[int],
+    selected_target_indices: List[int],
+    delta: torch.Tensor,
+    best_position: Tuple[int, int],
+    args: object
+) -> DataLoader:
+    """
+    创建带有投毒数据的训练数据加载器。
+
+    Args:
+        dataloader: 原始数据加载器
+        dataset_name: 数据集名称
+        selected_source_indices: 源数据索引
+        selected_target_indices: 目标数据索引
+        delta: 扰动值
+        best_position: 最佳位置坐标 (y, x)
+        args: 配置参数
+
+    Returns:
+        带有投毒数据的DataLoader
+    """
+    if not isinstance(dataloader, torch.utils.data.DataLoader):
+        raise TypeError("dataloader must be an instance of torch.utils.data.DataLoader")
     
-    # transform = _init_transform(dataset_name)
-    # trainset, testset = _load_dataset(dataset_name, transform, args.data_dir)
+    if dataset_name not in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
     
-    poison_trainset = copy.deepcopy(trainset)
-    poison_trainset.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta.cpu().numpy(), 0, 255)
-    poison_train_dataloader = torch.utils.data.DataLoader(
+    trainset = dataloader.dataset
+    
+    with torch.no_grad():
+        if dataset_name in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+            window_size = args.window_size
+            by, bx = best_position
+            
+            target_data = torch.from_numpy(trainset.data[selected_target_indices])
+            
+            delta_upd = (delta.permute(0, 2, 3, 1) * 255.0).to(torch.uint8)
+            delta_exten = torch.zeros_like(target_data).to(args.device)
+            delta_exten[:, by:by + window_size, bx + args.half:bx + window_size + args.half, :] = \
+                delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
+            
+            poison_trainset = copy.deepcopy(trainset)
+            poison_trainset.data[selected_target_indices] = np.clip(
+                trainset.data[selected_source_indices] + delta.cpu().numpy(),
+                0,
+                255
+            )
+        else:
+            raise ValueError
+        
+    return torch.utils.data.DataLoader(
         dataset=poison_trainset,
         batch_size=args.batch_size,
-        num_workers=args.workers
+        num_workers=args.workers,
+        pin_memory=True,
+        shuffle=True
     )
-    return poison_train_dataloader
+        
+def get_source_label_dataloader(
+    dataloader: DataLoader,
+    dataset_name: str,
+    source_label: List[int],
+    args: object
+) -> DataLoader:
+    """
+    创建仅包含source_label的测试数据加载器。
+
+    Args:
+        dataloader: 原始测试数据加载器
+        dataset_name: 数据集名称
+        source_label: 源类别标签
+        args: 配置参数
+
+    Returns:
+        仅包含source_label的测试DataLoader
+    """
+    if not isinstance(dataloader, torch.utils.data.DataLoader):
+        raise TypeError("dataloader must be an instance of torch.utils.data.DataLoader")
+    
+    if dataset_name not in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+        raise ValueError(f"Unsupported dataset: {dataset_name}")
+    
+    testset = dataloader.dataset
+    
+    # 找到源类别的索引
+    source_indices = []
+    for idx, label in enumerate(testset.targets):
+        if label in source_label:
+            source_indices.append(idx)
+    
+    # 创建仅包含源类别数据的新数据集
+    source_testset = copy.deepcopy(testset)
+    
+    # 提取源类别的数据和标签
+    source_testset.data = testset.data[source_indices]
+    source_testset.targets = [testset.targets[i] for i in source_indices]
+            
+    return torch.utils.data.DataLoader(
+        dataset=source_testset,
+        batch_size=args.batch_size,
+        num_workers=args.workers,
+        pin_memory=True,
+        shuffle=False
+    )

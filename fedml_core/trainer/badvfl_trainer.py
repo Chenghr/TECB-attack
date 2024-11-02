@@ -248,7 +248,7 @@ class BadVFLTrainer(VFLTrainer):
     
     def convert_delta(self, dataloader, best_position, delta, args):
         """
-        将触发器模式 delta 转换为与输入数据 Xb 形状相同的张量,以便直接相加。
+        将触发器模式 delta 转换为与完整输入数据形状相同的张量。
 
         Args:
             dataloader (torch.utils.data.DataLoader): 用于获取输入数据形状的数据加载器。
@@ -257,7 +257,7 @@ class BadVFLTrainer(VFLTrainer):
             args (object): 包含必要参数的对象,如device、dataset和window_size等。
 
         Returns:
-            converted_delta (torch.Tensor): 与输入数据 Xb 形状相同的触发器模式张量。
+            converted_delta (torch.Tensor): 与完整输入数据 trn_X 形状相同的触发器模式张量。
         """
         device = args.device
         by = best_position[0]
@@ -267,15 +267,14 @@ class BadVFLTrainer(VFLTrainer):
         batch = next(iter(dataloader))
         if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
             trn_X = batch[0].float().to(device)
-            _, Xb = split_data(trn_X, args)
         else:
-            Xb = batch[1].float().to(device)
+            raise ValueError(f"Unsupported dataset: {args.dataset}")
         
-        # 创建与 Xb 形状相同的零张量
-        converted_delta = torch.zeros_like(Xb).to(device)
+        # 创建与 trn_X 形状相同的零张量
+        converted_delta = torch.zeros_like(trn_X).to(device)
         
         # 将 delta 复制到 converted_delta 的指定位置
-        batch_size, channels, height, width = Xb.size()
+        batch_size, channels, height, width = trn_X.size()
         converted_delta[:, :, by:by+args.window_size, bx:bx+args.window_size] = delta.expand(batch_size, -1, -1, -1)
         
         return converted_delta
@@ -283,104 +282,66 @@ class BadVFLTrainer(VFLTrainer):
     def train(self, train_dataloader, criterion, bottom_criterion, optimizer_list, args):
         return super().train(train_dataloader, criterion, bottom_criterion, optimizer_list, args.device, args)
     
-    def train_poisoning(self, train_dataloader, criterion, bottom_criterion, optimizer_list, 
-                        selected_source_indices, selected_target_indices, delta, args):
-        """
-        """
-        device = args.device
-        model_list = [model.train().to(device) for model in self.model]
-        
-        batch_loss = []
-        for step, (trn_X, trn_y, indices) in enumerate(train_dataloader):
-            if args.dataset in ["CIFAR10", "CIFAR100", "CINIC10L"]:
-                trn_X = trn_X.float().to(device)
-                Xa, Xb = self.split_data(trn_X, args)
-                target = trn_y.long().to(device)
-            else:
-                # trn_X = [x.float().to(device) for x in trn_X]
-                Xa = trn_X[0].float().to(device)
-                Xb = trn_X[1].float().to(device)
-                target = trn_y.long().to(device)
-            
-            # 如果 indices 中存在 下标在 selected_target_indices, 将对应的 xb 替换为 selected_source_indices 中对应下标的 xb,并执行 xb + delta
-            ...
-            
-            output_tensor_bottom_model_a = model_list[0](Xa)
-            output_tensor_bottom_model_b = model_list[1](Xb)
-            
-            input_tensor_top_model_a = output_tensor_bottom_model_a.detach().clone()
-            input_tensor_top_model_b = output_tensor_bottom_model_b.detach().clone()
-            input_tensor_top_model_a.requires_grad_(True)
-            input_tensor_top_model_b.requires_grad_(True)
-            
-            output = model_list[2](input_tensor_top_model_a, input_tensor_top_model_b)
-            
-            loss = self.update_model_one_batch(
-                optimizer=optimizer_list[2],
-                model=model_list[2],
-                output=output,
-                batch_target=target,
-                loss_func=criterion,
-                args=args,
-            )
-            
-            grad_output_bottom_model_a = input_tensor_top_model_a.grad
-            grad_output_bottom_model_b = input_tensor_top_model_b.grad
-            
-            _ = self.update_model_one_batch(
-                optimizer=optimizer_list[1],
-                model=model_list[1],
-                output=output_tensor_bottom_model_b,
-                batch_target=grad_output_bottom_model_b,
-                loss_func=bottom_criterion,
-                args=args,
-            )
-
-            # -- bottom model a backward/update--
-            _ = self.update_model_one_batch(
-                optimizer=optimizer_list[0],
-                model=model_list[0],
-                output=output_tensor_bottom_model_a,
-                batch_target=grad_output_bottom_model_a,
-                loss_func=bottom_criterion,
-                args=args,
-            )
-
-            batch_loss.append(loss.item())
-
-        epoch_loss = sum(batch_loss) / len(batch_loss)
-
-        return epoch_loss
+    def train_poisoning(self, poison_train_dataloader, criterion, bottom_criterion, optimizer_list, args):
+        # 直接在数据集中投毒，无需重写训练代码
+        return super().train(poison_train_dataloader, criterion, bottom_criterion, optimizer_list, args.device, args)
         
     def test(self, dataloader, criterion, args):
         return super().test(dataloader, criterion, args.device, args)
     
-    def test_backdoor(self,):
-        ...
-        
-    def poison_dataset(self, dataloader, selected_source_indices, selected_target_indices, delta, args):
+    def test_backdoor(self, source_label_dataloader, criterion, convert_delta, target_label, args):
         device = args.device
-        dataset = dataloader.dataset
-        poisoned_dataset = []
+        model_list = [model.to(device).eval()  for model in self.model]
 
-        for i in range(len(dataset)):
-            data, target, _ = dataset[i]
-            data = data.float().to(device)
-
-            if i in selected_target_indices:
-                source_idx = selected_source_indices[selected_target_indices.tolist().index(i)]
-                source_data, _, _ = dataset[source_idx]
-                source_data = source_data.float().to(device)
-
-                source_data = source_data.unsqueeze(0)  # 添加批次维度
-                batch_delta = torch.zeros_like(source_data).to(device)
-                batch_delta[:, :, args.by:args.by+args.window_size, args.bx:args.bx+args.window_size] = delta.expand(source_data.size(0), -1, -1, -1)
-                poisoned_data = source_data + batch_delta
-                poisoned_data = poisoned_data.squeeze(0)
-
-                poisoned_dataset.append((poisoned_data, target))
-            else:
-                poisoned_dataset.append((data, target))
-
-        return poisoned_dataset
+        test_loss = 0
+        top5_correct = 0
+        total = 0
+        correct = 0
         
+        with torch.no_grad():
+            for batch_idx, (trn_X, trn_y, indices) in enumerate(source_label_dataloader):
+                if args.dataset in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+                    trn_X = trn_X.float().to(device)
+                    # trn_X 每一个都添加
+                    Xa, Xb = self.split_data(trn_X, args)
+                    target = trn_y.long().to(device)
+                else:
+                    raise ValueError
+
+                target_class = (
+                    torch.tensor([poison_target_label])
+                    .repeat(target.shape[0])
+                    .to(device)
+                )
+
+                # bottom model B
+                output_tensor_bottom_model_b = model_list[1](Xb + delta)
+                # bottom model A
+                output_tensor_bottom_model_a = model_list[0](Xa)
+
+                # top model
+                output = model_list[2](
+                    output_tensor_bottom_model_a, output_tensor_bottom_model_b
+                )
+
+                # update here.
+                loss = criterion(output, target_class)
+                test_loss += loss.item()  # sum up batch loss
+
+                probs = F.softmax(output, dim=1)
+                # Top-1 accuracy
+                total += target.size(0)
+                _, pred = probs.topk(1, 1, True, True)
+                correct += torch.eq(pred, target_class.view(-1, 1)).sum().float().item()
+
+                # Top-5 accuracy
+                _, top5_preds = probs.topk(5, 1, True, True)
+                top5_correct += (
+                    torch.eq(top5_preds, target_class.view(-1, 1)).sum().float().item()
+                )
+
+        test_loss = test_loss / total
+        asr_top1_acc = 100.0 * correct / total
+        asr_top5_acc = 100.0 * top5_correct / total
+
+        return test_loss, asr_top1_acc, asr_top5_acc

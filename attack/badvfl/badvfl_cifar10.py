@@ -11,7 +11,12 @@ import argparse
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from attack.badvfl.utils import set_seed, init_model_releated, init_dataloader, sample_poisoned_source_target_data
+from attack.badvfl.utils import (
+    set_seed, 
+    init_model_releated, init_dataloader, 
+    sample_poisoned_source_target_data, 
+    construct_poison_train_dataloader, get_source_label_dataloader
+)
 from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
 from fedml_core.model.baseline.vfl_models import (
     BottomModelForCinic10,
@@ -61,7 +66,7 @@ def train(args, logger):
             pre_train_loss.append(loss)
         logger.info(f"Pre-Train Loss: [{', '.join([f'{l:.4f}' for l in pre_train_loss])}]")
         
-        # set poison dataset
+        # Optimal select label
         source_label, target_label = trainer.select_closest_class_pair(
             train_dataloader, args
         )
@@ -88,8 +93,15 @@ def train(args, logger):
             trigger_loss.append(loss)
         logger.info(f"Trigger Train Loss: [{', '.join([f'{l:.4f}' for l in trigger_loss])}]")
         
-        delta = trainer.convert_delta(
+        # Set poison data
+        poison_train_dataloader = construct_poison_train_dataloader(
+            train_dataloader, args.dataset, selected_source_indices, selected_target_indices, delta, best_position, args
+        )
+        convert_delta = trainer.convert_delta(
             train_dataloader, best_position, delta, args
+        )
+        source_label_dataloader = get_source_label_dataloader(
+            test_dataloader, args.dataset, source_label, args
         )
         
         # Trian VFL
@@ -103,17 +115,17 @@ def train(args, logger):
                 )
             else:
                 train_loss = trainer.train_poisoning(
+                    poison_train_dataloader, criterion, bottom_criterion, optimizer_list, args
                 )
-                
-            lr_scheduler_list[0].step()
-            lr_scheduler_list[1].step()
-            lr_scheduler_list[2].step()
+            
+            for i in range(3):
+                lr_scheduler_list[i].step()
 
-            test_loss, top1_acc, top5_acc = trainer.test_mul(
-                test_dataloader, criterion, device, args
+            test_loss, top1_acc, top5_acc = trainer.test(
+                test_dataloader, criterion, args
             )
-            _, test_asr_acc, _ = trainer.test_backdoor_mul(
-                test_dataloader, criterion, device, args, delta, best_position, target_label
+            _, test_asr_acc, _ = trainer.test_backdoor(
+                source_label_dataloader, criterion, convert_delta, target_label, args
             )
 
             logger.info(
