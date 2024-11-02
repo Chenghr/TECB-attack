@@ -1,0 +1,234 @@
+import os
+import sys
+import random
+
+import numpy as np
+from sklearn.utils import shuffle
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
+import argparse
+
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+from attack.badvfl.utils import set_seed, init_model_releated, init_dataloader, sample_poisoned_source_target_data
+from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
+from fedml_core.model.baseline.vfl_models import (
+    BottomModelForCinic10,
+    TopModelForCinic10,
+)
+from fedml_core.trainer.badvfl_trainer import BadVFLTrainer
+from fedml_core.utils.utils import (
+    AverageMeter,
+    keep_predict_loss,
+)
+from torch.utils.data import Subset
+
+
+def train(args, logger):
+    ASR_Top1 = AverageMeter()
+    Main_Top1_acc = AverageMeter()
+    Main_Top5_acc = AverageMeter()
+    
+    for seed in range(args.seed_num):
+        set_seed(seed)
+        
+        save_model_dir = args.save + f"/seed={seed}_saved_models"
+        if not os.path.exists(save_model_dir):
+            os.makedirs(save_model_dir)
+
+        # 加载基础数据
+        train_dataloader, test_dataloader = init_dataloader(
+            args.dataset, args.data_dir, args.batch_size
+        )
+        # 加载模型
+        model_list, optimizer_list, lr_scheduler_list = init_model_releated(
+            args.dataset, args.lr, args.momentum, args.weight_decay, args.stone1, args.stone2, args.step_gamma
+        )
+        # 设置训练函数
+        criterion = nn.CrossEntropyLoss().to(args.device)
+        bottom_criterion = keep_predict_loss
+
+        trainer = BadVFLTrainer(model_list)
+        
+        # Pretrain
+        logger.info("###### Pre-Trained ######")
+        pre_train_loss = []
+        for _ in range(args.pre_train_epochs):
+            loss = trainer.pre_train(
+                train_dataloader, criterion, bottom_criterion, optimizer_list, args, 
+            )
+            pre_train_loss.append(loss)
+        logger.info(f"Pre-Train Loss: [{', '.join([f'{l:.4f}' for l in pre_train_loss])}]")
+        
+        # set poison dataset
+        source_label, target_label = trainer.select_closest_class_pair(
+            train_dataloader, args
+        )
+        selected_source_indices, selected_target_indices, selected_dataloader = sample_poisoned_source_target_data(
+            train_dataloader.dataset, source_label, target_label, args.poison_budget
+        )
+        logger.info(f"source_label: {source_label}, target_label: {target_label}")
+        
+        # Set trigger
+        logger.info("###### Train Trigger ######") 
+       
+        best_position = trainer.find_optimal_trigger_position(
+            train_dataloader, source_label, criterion, optimizer_list, args
+        )
+        
+        delta = torch.full((1, 3, args.window_size, args.window_size), 0.0).to(args.device)
+        
+        trigger_optimizer = torch.optim.SGD([delta], 0.25)
+        trigger_loss= []
+        for _ in range(args.trigger_train_epochs):
+            delta, loss = trainer.train_trigger(
+                selected_dataloader, best_position, delta, trigger_optimizer, args
+            )
+            trigger_loss.append(loss)
+        logger.info(f"Trigger Train Loss: [{', '.join([f'{l:.4f}' for l in trigger_loss])}]")
+        
+        delta = trainer.convert_delta(
+            train_dataloader, best_position, delta, args
+        )
+        
+        # Trian VFL
+        logger.info("###### Train Federated Models ######") 
+        best_score, best_top1_acc, best_asr = 0.0, 0.0, 0.0
+        
+        for epoch in range(args.start_epoch, args.epochs):
+            if epoch < args.backdoor_start_epoch:
+                train_loss = trainer.train(
+                    train_dataloader, criterion, bottom_criterion, optimizer_list, args
+                )
+            else:
+                train_loss = trainer.train_poisoning(
+                )
+                
+            lr_scheduler_list[0].step()
+            lr_scheduler_list[1].step()
+            lr_scheduler_list[2].step()
+
+            test_loss, top1_acc, top5_acc = trainer.test_mul(
+                test_dataloader, criterion, device, args
+            )
+            _, test_asr_acc, _ = trainer.test_backdoor_mul(
+                test_dataloader, criterion, device, args, delta, best_position, target_label
+            )
+
+            logger.info(
+                f"epoch: {epoch + 1}, train_loss: {train_loss:.5f}, test_loss: {test_loss:.5f}, "
+                f"top1_acc: {top1_acc:.5f}, top5_acc: {top5_acc:.5f}, test_asr_acc: {test_asr_acc:.5f}"
+            )
+
+            if not args.backdoor_start:
+                is_best = top1_acc >= best_score
+                if is_best:
+                    best_score, best_top1_acc = top1_acc, top1_acc
+            else:
+                # Dynamically adjust the weight over epochs
+                epoch_ratio = epoch / args.epochs
+                weight_asr = min(0.5 + 0.5 * epoch_ratio, 1.0)  # Example: gradually increase ASR importance
+                weight_top1 = 1.0 - weight_asr
+                total_value = weight_asr * test_asr_acc + weight_top1 * top1_acc
+                
+                is_best = total_value >= best_score
+                if is_best:
+                    best_score, best_top1_acc, best_asr = total_value, top1_acc, test_asr_acc
+
+def test():
+    pass
+
+
+
+
+if __name__ == "__main__":
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    default_data_path = os.path.abspath("../../data/cinic/")
+    default_save_path = os.path.abspath("../../results/models/BadVFL/cifar10")
+
+    parser = argparse.ArgumentParser("badvfl_cifar10")
+
+    # 数据相关参数
+    data_group = parser.add_argument_group('Data')
+    data_group.add_argument("--data_dir", default=default_data_path, help="location of the data corpus")
+    data_group.add_argument("--dataset", default="CIFAR10", type=str, choices=["CIFAR10", "CIFAR100", "CINIC10L"], help="name of dataset")
+
+    # 实验相关参数
+    experiment_group = parser.add_argument_group('Experiment')
+    experiment_group.add_argument("--name", type=str, default="badvfl_cifar10", help="experiment name")
+    experiment_group.add_argument("--save", default=default_save_path, type=str, metavar="PATH", help="path to save checkpoint")
+    experiment_group.add_argument("--log_file_name", type=str, default="experiment.log", help="log name")
+    experiment_group.add_argument("--resume", default="", type=str, metavar="PATH", help="path to latest checkpoint")
+    experiment_group.add_argument("--seed_num", type=int, default=3, help="repeat num.")
+    
+    # 模型相关参数
+    model_group = parser.add_argument_group('Model')
+    model_group.add_argument("--layers", type=int, default=18, help="total number of layers")
+    model_group.add_argument("--u_dim", type=int, default=64, help="u layer dimensions")
+    model_group.add_argument("--k", type=int, default=2, help="num of clients")
+    model_group.add_argument("--parallel", action="store_true", default=False, help="data parallelism")
+    model_group.add_argument("--half", type=int, default=16, help="half number of features")
+    
+    # 训练相关参数
+    training_group = parser.add_argument_group('Training')
+    training_group.add_argument("--epochs", type=int, default=80, help="num of training epochs")
+    training_group.add_argument("--start_epoch", default=0, type=int, metavar="N", help="manual epoch number (useful on restarts)")
+    training_group.add_argument("--batch_size", type=int, default=256, help="batch size")
+    training_group.add_argument("--lr", type=float, default=0.1, help="init learning rate")
+    training_group.add_argument("--momentum", type=float, default=0.9, help="momentum")
+    training_group.add_argument("--weight_decay", type=float, default=5e-4, help="weight decay")
+    training_group.add_argument("--decay_period", type=int, default=1, help="epochs between two learning rate decays")
+    training_group.add_argument("--stone1", default=30, type=int, metavar="s1", help="stone1 for step scheduler")
+    training_group.add_argument("--stone2", default=85, type=int, metavar="s2", help="stone2 for step scheduler")
+    training_group.add_argument("--grad_clip", type=float, default=5.0, help="gradient clipping")
+    training_group.add_argument("--gamma", type=float, default=0.97, help="learning rate decay")
+    training_group.add_argument("--step_gamma", default=0.1, type=float, metavar="S", help="gamma for step scheduler")
+    training_group.add_argument("--workers", type=int, default=0, help="num of workers")
+    training_group.add_argument("--report_freq", type=float, default=10, help="report frequency")
+
+    # 后门相关参数
+    backdoor_group = parser.add_argument_group('Backdoor')
+    training_group.add_argument("--trigger_lr", type=float, default=0.001, help="init learning rate for trigger")
+    backdoor_group.add_argument("--alpha", type=float, default=0.02, help="uap learning rate decay")
+    backdoor_group.add_argument("--eps", type=float, default=16 / 255, help="uap clamp bound")
+    backdoor_group.add_argument("--corruption_amp", type=float, default=5.0, help="amplification of corruption")
+    backdoor_group.add_argument("--backdoor_start", action="store_true", default=False, help="backdoor")
+    backdoor_group.add_argument("--poison_budget", type=float, default=0.1, help="poison sample fraction")
+    backdoor_group.add_argument("--optimal_sel", action="store_true", default=True, help="optimal select tartget class")
+    backdoor_group.add_argument("--saliency_map_injection", action="store_true", default=True, help="optimal select trigger loaction")
+    backdoor_group.add_argument("--pre_train_epochs", default=20, type=int, metavar="N", help="")
+    backdoor_group.add_argument("--trigger_train_epochs", default=40, type=int, metavar="N", help="")
+    backdoor_group.add_argument("--window_size", default=3, type=int, metavar="N", help="")
+    
+    
+    # 防御相关参数
+    # defense_group = parser.add_argument_group('Defense')
+    # defense_group.add_argument("--marvell", action="store_true", default=False, help="marvell defense")
+    # defense_group.add_argument("--max_norm", action="store_true", default=False, help="maxnorm defense")
+    # defense_group.add_argument("--iso", action="store_true", default=False, help="iso defense")
+    # defense_group.add_argument("--gc", action="store_true", default=False, help="gc defense")
+    # defense_group.add_argument("--lap_noise", action="store_true", default=False, help="lap_noise defense")
+    # defense_group.add_argument("--signSGD", action="store_true", default=False, help="sign_SGD defense")
+    # defense_group.add_argument("--iso_ratio", type=float, default=0.01, help="iso defense ratio")
+    # defense_group.add_argument("--gc_ratio", type=float, default=0.01, help="gc defense ratio")
+    # defense_group.add_argument("--lap_noise_ratio", type=float, default=0.01, help="lap_noise defense ratio")
+
+
+    args = parser.parse_args()
+    args.device = device
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    args.timestamp = timestamp
+    args.save = os.path.join(args.save, timestamp)
+
+    if not os.path.exists(args.save):
+        os.makedirs(args.save)
+
+    # 创建一个logger
+    logger = setup_logger(args)
+
+    # 记录所有的参数信息
+    logger.info(f"Experiment arguments: {args}")
+    
+    main(logger=logger, args=args)

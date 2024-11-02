@@ -14,7 +14,7 @@ from fedml_core.model.baseline.vfl_models import (
     TopModelForCifar10,
     LocalClassifierForCifar10,
 )
-from fedml_core.trainer.BadVFL_trainer import BadVFLTrainer
+from fedml_core.trainer.badvfl_trainer_old import BadVFLTrainer
 from fedml_core.utils.utils import (
     AverageMeter,
     keep_predict_loss,

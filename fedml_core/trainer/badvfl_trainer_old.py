@@ -57,38 +57,6 @@ def compute_correct_prediction(*, y_targets, y_prob_preds, threshold=0.5):
 
 
 class BadVFLTrainer(VFLTrainer):
-    def extract_features(self, train_data, device, args):
-        """
-        从训练数据集中提取特征和标签。
-        
-        返回:
-        - features: 从被动方模型中提取的样本的embedding,形状为 (num_samples, feature_dim)。
-        - labels: 所有样本对应的标签，形状为 (num_samples,)。
-        """
-        victim_model = self.model[-1].eval().to(device)
-
-        features = []
-        labels = []
-        with torch.no_grad():
-            for step, (trn_X, trn_y, indices) in enumerate(train_data):
-                if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
-                    trn_X = trn_X.float().to(device)
-                    Xa, Xb = split_data(trn_X, args)
-                    target = trn_y.long().to(device)
-                else:
-                    # trn_X = [x.float().to(device) for x in trn_X]
-                    Xb = trn_X.float().to(device)
-                    target = torch.argmax(trn_y, dim=1).long().to(device)
-                # target = trn_y.float().to(device)
-                batch_loss = []
-
-                # bottom model B
-                output_tensor_bottom_model_b = victim_model(Xb)
-                features.append(output_tensor_bottom_model_b.detach().cpu().numpy())
-                labels.append(target.detach().cpu().numpy())
-
-        return np.concatenate(features, axis=0), np.concatenate(labels, axis=0)
-
     def pre_train(self, train_data, criterion, bottom_criterion, optimizer_list, device, args):
         """
         假设本地已有标签,先得到本地的特征嵌入以及classifier的梯度,便于后续操作
@@ -128,6 +96,40 @@ class BadVFLTrainer(VFLTrainer):
         epoch_loss.append(sum(batch_loss) / len(batch_loss))
 
         return epoch_loss[0]
+
+    
+    def extract_features(self, train_data, device, args):
+        """
+        从训练数据集中提取特征和标签。
+        
+        返回:
+        - features: 从被动方模型中提取的样本的embedding,形状为 (num_samples, feature_dim)。
+        - labels: 所有样本对应的标签，形状为 (num_samples,)。
+        """
+        victim_model = self.model[-1].eval().to(device)
+
+        features = []
+        labels = []
+        with torch.no_grad():
+            for step, (trn_X, trn_y, indices) in enumerate(train_data):
+                if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
+                    trn_X = trn_X.float().to(device)
+                    Xa, Xb = split_data(trn_X, args)
+                    target = trn_y.long().to(device)
+                else:
+                    # trn_X = [x.float().to(device) for x in trn_X]
+                    Xb = trn_X.float().to(device)
+                    target = torch.argmax(trn_y, dim=1).long().to(device)
+                # target = trn_y.float().to(device)
+                batch_loss = []
+
+                # bottom model B
+                output_tensor_bottom_model_b = victim_model(Xb)
+                features.append(output_tensor_bottom_model_b.detach().cpu().numpy())
+                labels.append(target.detach().cpu().numpy())
+
+        return np.concatenate(features, axis=0), np.concatenate(labels, axis=0)
+
 
     def pairwise_distance_min(self, train_data, device, args):
         features, labels = self.extract_features(train_data, device, args)
