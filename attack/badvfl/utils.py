@@ -370,3 +370,10 @@ def get_source_label_dataloader(
         pin_memory=True,
         shuffle=False
     )
+
+def save_checkpoint(state, is_best, save, checkpoint):
+    filename = os.path.join(save, checkpoint)
+    torch.save(state, filename)
+    if is_best:
+        best_filename = os.path.join(save, "model_best.pth.tar")
+        shutil.copyfile(filename, best_filename)

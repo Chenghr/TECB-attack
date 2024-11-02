@@ -248,7 +248,7 @@ class BadVFLTrainer(VFLTrainer):
     
     def convert_delta(self, dataloader, best_position, delta, args):
         """
-        将触发器模式 delta 转换为与完整输入数据形状相同的张量。
+        将触发器模式 delta 转换为与单个输入数据形状相同的张量。
 
         Args:
             dataloader (torch.utils.data.DataLoader): 用于获取输入数据形状的数据加载器。
@@ -257,7 +257,7 @@ class BadVFLTrainer(VFLTrainer):
             args (object): 包含必要参数的对象,如device、dataset和window_size等。
 
         Returns:
-            converted_delta (torch.Tensor): 与完整输入数据 trn_X 形状相同的触发器模式张量。
+            converted_delta (torch.Tensor): 与单个输入数据形状相同的触发器模式张量 (channels, height, width)。
         """
         device = args.device
         by = best_position[0]
@@ -270,14 +270,15 @@ class BadVFLTrainer(VFLTrainer):
         else:
             raise ValueError(f"Unsupported dataset: {args.dataset}")
         
-        # 创建与 trn_X 形状相同的零张量
-        converted_delta = torch.zeros_like(trn_X).to(device)
+        # 创建与单个样本形状相同的零张量
+        _, channels, height, width = trn_X.size()
+        converted_delta = torch.zeros(channels, height, width).to(device)
         
         # 将 delta 复制到 converted_delta 的指定位置
-        batch_size, channels, height, width = trn_X.size()
-        converted_delta[:, :, by:by+args.window_size, bx:bx+args.window_size] = delta.expand(batch_size, -1, -1, -1)
+        converted_delta[:, by:by+args.window_size, bx:bx+args.window_size] = delta[0]
         
         return converted_delta
+
     
     def train(self, train_dataloader, criterion, bottom_criterion, optimizer_list, args):
         return super().train(train_dataloader, criterion, bottom_criterion, optimizer_list, args.device, args)
@@ -290,8 +291,11 @@ class BadVFLTrainer(VFLTrainer):
         return super().test(dataloader, criterion, args.device, args)
     
     def test_backdoor(self, source_label_dataloader, criterion, convert_delta, target_label, args):
+        """
+        测试后门攻击的攻击成功率(ASR)。
+        """
         device = args.device
-        model_list = [model.to(device).eval()  for model in self.model]
+        model_list = [model.to(device).eval() for model in self.model]
 
         test_loss = 0
         top5_correct = 0
@@ -299,47 +303,49 @@ class BadVFLTrainer(VFLTrainer):
         correct = 0
         
         with torch.no_grad():
-            for batch_idx, (trn_X, trn_y, indices) in enumerate(source_label_dataloader):
+            for batch_idx, (trn_X, trn_y) in enumerate(source_label_dataloader):
                 if args.dataset in ["CIFAR10", "CIFAR100", "CINIC10L"]:
                     trn_X = trn_X.float().to(device)
-                    # trn_X 每一个都添加
+                    current_batch_size = trn_X.size(0)
+                    # 将convert_delta扩展到当前batch size
+                    current_convert_delta = convert_delta.unsqueeze(0).expand(current_batch_size, -1, -1, -1)
+                    # 添加trigger pattern
+                    trn_X = trn_X + current_convert_delta
+                    # 分割数据
                     Xa, Xb = self.split_data(trn_X, args)
-                    target = trn_y.long().to(device)
                 else:
-                    raise ValueError
-
-                target_class = (
-                    torch.tensor([poison_target_label])
-                    .repeat(target.shape[0])
-                    .to(device)
-                )
-
+                    raise ValueError("Unsupported dataset")
+                
+                # 创建当前batch size对应的目标标签
+                target_class = torch.tensor([target_label] * current_batch_size).to(device)
+                
+                # 前向传播
                 # bottom model B
-                output_tensor_bottom_model_b = model_list[1](Xb + delta)
+                output_tensor_bottom_model_b = model_list[1](Xb)
                 # bottom model A
                 output_tensor_bottom_model_a = model_list[0](Xa)
-
                 # top model
                 output = model_list[2](
                     output_tensor_bottom_model_a, output_tensor_bottom_model_b
                 )
 
-                # update here.
+                # 计算损失
                 loss = criterion(output, target_class)
-                test_loss += loss.item()  # sum up batch loss
+                test_loss += loss.item() * current_batch_size
 
+                # 计算预测概率
                 probs = F.softmax(output, dim=1)
-                # Top-1 accuracy
-                total += target.size(0)
+                
+                # Top-1 准确率
+                total += current_batch_size
                 _, pred = probs.topk(1, 1, True, True)
                 correct += torch.eq(pred, target_class.view(-1, 1)).sum().float().item()
 
-                # Top-5 accuracy
+                # Top-5 准确率
                 _, top5_preds = probs.topk(5, 1, True, True)
-                top5_correct += (
-                    torch.eq(top5_preds, target_class.view(-1, 1)).sum().float().item()
-                )
+                top5_correct += torch.eq(top5_preds, target_class.view(-1, 1)).sum().float().item()
 
+        # 计算平均损失和准确率
         test_loss = test_loss / total
         asr_top1_acc = 100.0 * correct / total
         asr_top5_acc = 100.0 * top5_correct / total

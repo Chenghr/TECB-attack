@@ -15,7 +15,8 @@ from attack.badvfl.utils import (
     set_seed, 
     init_model_releated, init_dataloader, 
     sample_poisoned_source_target_data, 
-    construct_poison_train_dataloader, get_source_label_dataloader
+    construct_poison_train_dataloader, get_source_label_dataloader,
+    save_checkpoint
 )
 from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
 from fedml_core.model.baseline.vfl_models import (
@@ -32,6 +33,7 @@ from torch.utils.data import Subset
 
 def train(args, logger):
     ASR_Top1 = AverageMeter()
+    ASR_Top5 = AverageMeter()
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
     
@@ -124,32 +126,172 @@ def train(args, logger):
             test_loss, top1_acc, top5_acc = trainer.test(
                 test_dataloader, criterion, args
             )
-            _, test_asr_acc, _ = trainer.test_backdoor(
+            _, test_asr_acc, test_asr_acc5 = trainer.test_backdoor(
                 source_label_dataloader, criterion, convert_delta, target_label, args
             )
 
-            logger.info(
-                f"epoch: {epoch + 1}, train_loss: {train_loss:.5f}, test_loss: {test_loss:.5f}, "
-                f"top1_acc: {top1_acc:.5f}, top5_acc: {top5_acc:.5f}, test_asr_acc: {test_asr_acc:.5f}"
-            )
+            print(f"Epoch: {epoch + 1:3d} | "
+                  f"Train Loss: {train_loss:.4f} | "
+                  f"Test Loss: {test_loss:.4f} | "
+                  f"Top1 Acc: {top1_acc:.2f}% | "
+                  f"Top5 Acc: {top5_acc:.2f}% | "
+                  f"ASR Top1: {test_asr_acc:.2f}% | "
+                  f"ASR Top5: {test_asr_acc5:.2f}%")
 
             if not args.backdoor_start:
-                is_best = top1_acc >= best_score
-                if is_best:
-                    best_score, best_top1_acc = top1_acc, top1_acc
+                is_best = top1_acc >= best_asr
+                best_asr = max(top1_acc, best_asr)
             else:
-                # Dynamically adjust the weight over epochs
-                epoch_ratio = epoch / args.epochs
-                weight_asr = min(0.5 + 0.5 * epoch_ratio, 1.0)  # Example: gradually increase ASR importance
-                weight_top1 = 1.0 - weight_asr
-                total_value = weight_asr * test_asr_acc + weight_top1 * top1_acc
+                total_value = test_asr_acc + top1_acc
+                is_best = total_value >= best_asr
+                best_asr = max(total_value, best_asr)
+
+            save_model_dir = os.path.join(args.save, f"{seed}_saved_models")
+            os.makedirs(save_model_dir, exist_ok=True)
+
+            if is_best:
+                save_checkpoint({
+                    "epoch": epoch + 1,
+                    "best_auc": best_asr,
+                    "state_dict": [model.state_dict() for model in model_list],
+                    "optimizer": [opt.state_dict() for opt in optimizer_list]
+                }, is_best, save_model_dir, f"checkpoint_{epoch:04d}.pth.tar")
+
+                backdoor_data = {
+                    "delta": convert_delta,
+                    "source_label": source_label,
+                    "target_label": target_label
+                }
+                torch.save(backdoor_data, os.path.join(save_model_dir, "backdoor.pth"))
+
+        logger.info("Testing Best Model")
+        checkpoint_path = os.path.join(args.save, f"{seed}_saved_models", "model_best.pth.tar")
+        
+        if os.path.isfile(checkpoint_path):
+            checkpoint = torch.load(checkpoint_path)
+            for i, model in enumerate(model_list):
+                model.load_state_dict(checkpoint["state_dict"][i])
+        
+        trainer.update_model(model_list)
+        
+        with open(os.path.join(args.save, "saved_result.txt"), "a") as file:
+            sys.stdout = file
+            test_loss, top1_acc, top5_acc = trainer.test(
+                test_dataloader, criterion, args
+            )
+            _, asr_top1_acc, asr_top5_acc = trainer.test_backdoor(
+                source_label_dataloader, criterion, convert_delta, target_label, args
+            )
+
+            print("\nTest Results (Seed {})".format(seed))
+            print("Main Task Metrics:")
+            print(f"Loss: {test_loss:.4f} | "
+                  f"Top1: {top1_acc:.2f}% | "
+                  f"Top5: {top5_acc:.2f}%")
+
+            print("Backdoor Task Metrics:")
+            print(f"ASR Top1: {asr_top1_acc:.2f}% | "
+                  f"ASR Top5: {asr_top5_acc:.2f}%\n")
+
+            Main_Top1_acc.update(top1_acc)
+            Main_Top5_acc.update(top5_acc)
+            ASR_Top1.update(asr_top1_acc)
+            ASR_Top5.update(asr_top5_acc)
+
+            if seed == args.seed_num-1:
+                print("Final Results Summary")
+                print("Main Model Performance:")
+                print(f"Top1: {Main_Top1_acc.avg:.2f}% ± {Main_Top1_acc.std_dev():.2f}%")
+                print(f"Top5: {Main_Top5_acc.avg:.2f}% ± {Main_Top5_acc.std_dev():.2f}%")
                 
-                is_best = total_value >= best_score
-                if is_best:
-                    best_score, best_top1_acc, best_asr = total_value, top1_acc, test_asr_acc
+                print("Backdoor Performance:")
+                print(f"ASR Top1: {ASR_Top1.avg:.2f}% ± {ASR_Top1.std_dev():.2f}%")
+                print(f"ASR Top5: {ASR_Top5.avg:.2f}% ± {ASR_Top5.std_dev():.2f}%")
+
+            sys.stdout = sys.__stdout__
+
+        print(f"Results for seed {seed} saved to file")
 
 def test():
-    pass
+    """需要修改
+    """
+    # 加载模型
+    save_model_dir = args.save
+    checkpoint_path = save_model_dir + "/model_best.pth.tar"
+    checkpoint = torch.load(checkpoint_path)
+
+    # 加载后门攻击信息
+    backdoor_data = torch.load(save_model_dir + "/backdoor.pth")
+    delta = backdoor_data.get("delta", None)
+    target_label = backdoor_data.get("target_label", None)
+
+    # load model
+    model_list = []
+    model_list.append(BottomModelForCinic10())
+    model_list.append(BottomModelForCinic10())
+    model_list.append(TopModelForCinic10())
+
+    criterion = nn.CrossEntropyLoss().to(device)
+    bottom_criterion = keep_predict_loss
+
+    # 加载每个模型的参数
+    for i in range(len(model_list)):
+        model_list[i].load_state_dict(checkpoint["state_dict"][i])
+
+    # load data
+    # Data normalization and augmentation (optional)
+    transform = transforms.Compose(
+        [
+            transforms.Lambda(image_format_2_rgb),
+            transforms.Resize((32, 32)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                (0.47889522, 0.47227842, 0.43047404),
+                (0.24205776, 0.23828046, 0.25874835),
+            ),
+        ]
+    )
+
+    # Load CIFAR-10 dataset
+    trainset = CINIC10L(root=args.data_dir, split="/train", transform=transform)
+    testset = CINIC10L(root=args.data_dir, split="/test", transform=transform)
+
+    target_indices = np.where(np.array(trainset.targets) == target_label)[0]
+    non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
+    non_target_set = Subset(testset, non_target_indices)
+
+    train_queue = torch.utils.data.DataLoader(
+        dataset=trainset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.workers,
+    )
+    test_queue = torch.utils.data.DataLoader(
+        dataset=testset, batch_size=args.batch_size, num_workers=args.workers
+    )
+    non_target_queue = torch.utils.data.DataLoader(
+        dataset=non_target_set, batch_size=args.batch_size, num_workers=args.workers
+    )
+
+    print(
+        "################################ Test Backdoor Models ############################"
+    )
+    vfltrainer = BadVFLTrainer(model_list)
+    test_loss, top1_acc, top5_acc = vfltrainer.test(test_queue, criterion, device, args)
+
+    test_loss, test_asr_acc, _ = vfltrainer.test_backdoor(
+        non_target_queue, criterion, device, args, delta, target_label
+    )
+    print(
+        "test_loss: ",
+        test_loss,
+        "top1_acc: ",
+        top1_acc,
+        "top5_acc: ",
+        top5_acc,
+        "test_asr_acc: ",
+        test_asr_acc,
+    )
 
 
 
