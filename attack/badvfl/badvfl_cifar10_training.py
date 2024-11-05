@@ -7,9 +7,9 @@ import copy
 import numpy as np
 from sklearn.utils import shuffle
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
 # from fedml_core.data_preprocessing.NUS_WIDE.nus_wide_dataset import NUS_WIDE_load_two_party_data
-from fedml_core.data_preprocessing.cifar10.dataset import IndexedCIFAR10
+from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
 from fedml_core.model.baseline.vfl_models import (
     BottomModelForCifar10,
     TopModelForCifar10,
@@ -75,8 +75,8 @@ def set_dataset_basic(args):
 
     # Load CIFAR-10 dataset
     # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
-    trainset = IndexedCIFAR10(root='./data', train=True, download=True, transform=train_transform)
-    testset = IndexedCIFAR10(root='./data', train=False, download=True, transform=train_transform)
+    trainset = IndexedCIFAR10(root='../../data', train=True, download=True, transform=train_transform)
+    testset = IndexedCIFAR10(root='../../data', train=False, download=True, transform=train_transform)
     
     # CIFAR-10 类别标签（以类别名称的列表形式给出）
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -107,8 +107,8 @@ def set_dataset_poison(selected_source_indices, selected_target_indices, delta, 
 
     # Load CIFAR-10 dataset
     # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
-    trainset = IndexedCIFAR10(root='./data', train=True, download=True, transform=train_transform)
-    testset = IndexedCIFAR10(root='./data', train=False, download=True, transform=train_transform)
+    trainset = IndexedCIFAR10(root='../../data', train=True, download=True, transform=train_transform)
+    testset = IndexedCIFAR10(root='../../data', train=False, download=True, transform=train_transform)
     
     # CIFAR-10 类别标签（以类别名称的列表形式给出）
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -201,7 +201,7 @@ def pre_train(trainset, badvfltrainer, train_queue, train_queue_nobatch, criteri
     return source_label, target_label, selected_source_indices, selected_target_indices
 
 
-def main(device, args, logger):
+def Train(device, args, logger):
     ASR_Top1 = AverageMeter()
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
@@ -343,6 +343,10 @@ def main(device, args, logger):
 
 
 if __name__ == "__main__":
+    default_config_path = os.path.abspath("../../attack/badvfl/best_configs/cifar10_bestattack.yml")
+    default_data_path = os.path.abspath("../../data/")
+    default_save_path = os.path.abspath("../../results/models/BadVFL/cifar10")
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
 
@@ -414,9 +418,16 @@ if __name__ == "__main__":
     # defense_group.add_argument("--gc_ratio", type=float, default=0.01, help="gc defense ratio")
     # defense_group.add_argument("--lap_noise_ratio", type=float, default=0.01, help="lap_noise defense ratio")
 
-    # 配置文件相关参数
-    config_group = parser.add_argument_group('Config')
-    config_group.add_argument("--c", type=str, default="./configs/BadVFL/cifar10_test.yml", help="config file")
+    # # 配置文件相关参数
+    # config_group = parser.add_argument_group('Config')
+    # config_group.add_argument("--c", type=str, default="/../configs/BadVFL/cifar10_test.yml", help="config file")
+
+    parser.add_argument(
+        "--c",
+        type=str,
+        default=default_config_path,
+        help="config file",
+    )
 
     # 半特征相关参数
     feature_group = parser.add_argument_group('Feature')
@@ -438,4 +449,4 @@ if __name__ == "__main__":
     # 记录所有的参数信息
     logger.info(f"Experiment arguments: {args}")
     
-    main(logger=logger, device=device, args=args)
+    Train(logger=logger, device=device, args=args)
