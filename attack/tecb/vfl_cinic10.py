@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
-from fedml_core.model.baseline.vfl_models import (
+from fedml_core.model.vfl_models import (
     BottomModelForCinic10,
     TopModelForCinic10,
 )
@@ -90,8 +90,8 @@ def train(device, args):
         )
 
         model_list = [
-            BottomModelForCinic10(),
-            BottomModelForCinic10(),
+            BottomModelForCinic10(model_name=args.bottom_model_name),
+            BottomModelForCinic10(model_name=args.bottom_model_name),
             TopModelForCinic10()
         ]
 
@@ -264,8 +264,8 @@ def test(device, args):
 
     # load model
     model_list = []
-    model_list.append(BottomModelForCinic10())
-    model_list.append(BottomModelForCinic10())
+    model_list.append(BottomModelForCinic10(model_name=args.bottom_model_name))
+    model_list.append(BottomModelForCinic10(model_name=args.bottom_model_name))
     model_list.append(TopModelForCinic10())
 
     criterion = nn.CrossEntropyLoss().to(device)
@@ -478,6 +478,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--backdoor_start", action="store_true", default=False, help="backdoor"
+    )
+    parser.add_argument(
+        "--bottom_model_name", type=str, default="resnet20", 
+        choices=["resnet20", "vgg16", "LeNet"], 
     )
     # config file
     parser.add_argument("--c", type=str, default=default_config_path)

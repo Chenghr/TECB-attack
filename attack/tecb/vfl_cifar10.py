@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
-from fedml_core.model.baseline.vfl_models import (BottomModelForCifar10,
+from fedml_core.model.vfl_models import (BottomModelForCifar10,
                                                   TopModelForCifar10)
 from fedml_core.trainer.tecb_trainer import TECBTrainer
 from fedml_core.utils.utils import (AverageMeter, keep_predict_loss,
@@ -95,8 +95,8 @@ def train(device, args):
 
         # build model
         model_list = []
-        model_list.append(BottomModelForCifar10())
-        model_list.append(BottomModelForCifar10())
+        model_list.append(BottomModelForCifar10(model_name=args.bottom_model_name))
+        model_list.append(BottomModelForCifar10(model_name=args.bottom_model_name))
         model_list.append(TopModelForCifar10())
 
         # optimizer and stepLR
@@ -389,8 +389,8 @@ def test(device, args):
     
     # load model
     model_list = []
-    model_list.append(BottomModelForCifar10())
-    model_list.append(BottomModelForCifar10())
+    model_list.append(BottomModelForCifar10(model_name=args.bottom_model_name))
+    model_list.append(BottomModelForCifar10(model_name=args.bottom_model_name))
     model_list.append(TopModelForCifar10())
 
     criterion = nn.CrossEntropyLoss().to(device)
@@ -600,6 +600,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--backdoor_start", action="store_true", default=False, help="backdoor"
+    )
+    parser.add_argument(
+        "--bottom_model_name", type=str, default="resnet20", 
+        choices=["resnet20", "vgg16", "LeNet"], 
     )
 
     # config file

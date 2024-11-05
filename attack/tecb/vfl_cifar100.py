@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from fedml_core.data_preprocessing.cifar100.dataset import IndexedCIFAR100
-from fedml_core.model.baseline.vfl_models import (
+from fedml_core.model.vfl_models import (
     BottomModelForCifar100,
     TopModelForCifar100,
 )
@@ -89,8 +89,8 @@ def train(device, args):
 
         # build model
         model_list = []
-        model_list.append(BottomModelForCifar100())
-        model_list.append(BottomModelForCifar100())
+        model_list.append(BottomModelForCifar100(model_name=args.bottom_model_name))
+        model_list.append(BottomModelForCifar100(model_name=args.bottom_model_name))
         model_list.append(TopModelForCifar100())
 
         # optimizer and stepLR
@@ -383,8 +383,8 @@ def test(device, args):
 
     # load model
     model_list = []
-    model_list.append(BottomModelForCifar100())
-    model_list.append(BottomModelForCifar100())
+    model_list.append(BottomModelForCifar100(model_name=args.bottom_model_name))
+    model_list.append(BottomModelForCifar100(model_name=args.bottom_model_name))
     model_list.append(TopModelForCifar100())
 
     criterion = nn.CrossEntropyLoss().to(device)
@@ -591,6 +591,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--backdoor_start", action="store_true", default=False, help="backdoor"
+    )
+    parser.add_argument(
+        "--bottom_model_name", type=str, default="resnet20", 
+        choices=["resnet20", "vgg16", "LeNet"], 
     )
     # config file
     parser.add_argument("--c", type=str, default=default_config_path)
