@@ -24,7 +24,7 @@ from fedml_core.utils.utils import (
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.preprocessing import normalize
 
-from .vfl_trainer import VFLTrainer, split_data
+from .vfl_trainer import VFLTrainer
 from itertools import combinations
 
 def update_model_one_batch(optimizer, model, output, batch_target, loss_func, args):
@@ -72,7 +72,7 @@ class BadVFLTrainer(VFLTrainer):
         for step, (trn_X, trn_y, indices) in enumerate(train_data):
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                 trn_X = trn_X.float().to(device)
-                Xa, Xb = split_data(trn_X, args)
+                Xa, Xb = self.split_data(trn_X, args)
                 target = trn_y.long().to(device)
             else:
                 Xa = trn_X[0].float().to(device)
@@ -114,7 +114,7 @@ class BadVFLTrainer(VFLTrainer):
             for step, (trn_X, trn_y, indices) in enumerate(train_data):
                 if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                     trn_X = trn_X.float().to(device)
-                    Xa, Xb = split_data(trn_X, args)
+                    Xa, Xb = self.split_data(trn_X, args)
                     target = trn_y.long().to(device)
                 else:
                     # trn_X = [x.float().to(device) for x in trn_X]
@@ -158,7 +158,7 @@ class BadVFLTrainer(VFLTrainer):
             # 这里会一次加载所有的数据
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                 trn_X = trn_X.float().to(device)
-                Xa, Xb = split_data(trn_X, args)
+                Xa, Xb = self.split_data(trn_X, args)
                 target = trn_y.long().to(device)
             else:
                 Xa = trn_X[0].float().to(device)
@@ -208,7 +208,7 @@ class BadVFLTrainer(VFLTrainer):
         for step, (trn_X, trn_y, indices) in enumerate(train_data): # 一次加载所有的样本数目
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                 trn_X = trn_X.float().to(device)
-                Xa, Xb = split_data(trn_X, args)
+                Xa, Xb = self.split_data(trn_X, args)
                 target = trn_y.long().to(device)
             else:
                 Xa = trn_X[0].float().to(device)
@@ -260,7 +260,7 @@ class BadVFLTrainer(VFLTrainer):
         for step, (trn_X, trn_y, indices) in enumerate(train_data):
             if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                 trn_X = trn_X.float().to(device)
-                Xa, Xb = split_data(trn_X, args)
+                Xa, Xb = self.split_data(trn_X, args)
                 target = trn_y.long().to(device)
             else:
                 Xa = trn_X[0].float().to(device)
@@ -333,7 +333,7 @@ class BadVFLTrainer(VFLTrainer):
 
                 if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
                     trn_X = trn_X.float().to(device)
-                    Xa, Xb = split_data(trn_X, args)
+                    Xa, Xb = self.split_data(trn_X, args)
                     target = trn_y.long().to(device)
                 else:
                     # trn_X = [x.float().to(device) for x in trn_X]
