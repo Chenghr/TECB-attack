@@ -3,3 +3,11 @@ dataset: CIFAR10
 # model
 report_freq: 5
 workers: 8
+poison_budget: 0.1
+dropout_ratio: 0.25
+beta: 0.4
+gamma_up: 1.2
+gamma_up: 0.6
+target_class: cat
+batch_size: 1024
+local_lr: 0.5
