@@ -1,0 +1,5 @@
+dataset: CIFAR10
+
+# model
+report_freq: 5
+workers: 8

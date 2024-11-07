@@ -1,6 +1,7 @@
 import os
 import sys
 import random
+import shutil
 
 import numpy as np
 from sklearn.utils import shuffle
@@ -34,7 +35,7 @@ import torchvision.transforms as transforms
 from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
 from fedml_core.data_preprocessing.cifar100.dataset import IndexedCIFAR100
 from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
-from fedml_core.model.baseline.vfl_models import (BottomModelForCifar10,
+from fedml_core.model.vfl_models import (BottomModelForCifar10,
                                                   BottomModelForCifar100,
                                                   BottomModelForCinic10,
                                                   TopModelForCifar10,
@@ -53,7 +54,18 @@ def set_seed(seed):
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+def get_recommended_num_workers():
+    """获取推荐的num_workers值"""
+    import multiprocessing as mp
     
+    # 获取CPU核心数
+    cpu_count = mp.cpu_count()
+    
+    # 一般建议设置为CPU核心数的2-4倍
+    recommended = min(cpu_count * 4, 16)  # 设置上限为16
+    
+    return recommended
     
 def init_dataloader(dataset, data_dir="./data", batch_size=128):
     """加载数据集
@@ -79,18 +91,6 @@ def init_dataloader(dataset, data_dir="./data", batch_size=128):
     ValueError
         当数据集不支持时抛出
     """
-    def get_recommended_num_workers():
-        """获取推荐的num_workers值"""
-        import multiprocessing as mp
-        
-        # 获取CPU核心数
-        cpu_count = mp.cpu_count()
-        
-        # 一般建议设置为CPU核心数的2-4倍
-        recommended = min(cpu_count * 4, 16)  # 设置上限为16
-        
-        return recommended
-    
     transform = _init_transform(dataset)
     trainset, testset = _load_dataset(dataset, transform, data_dir)
 
@@ -104,7 +104,7 @@ def init_dataloader(dataset, data_dir="./data", batch_size=128):
     )
     full_train_dataloader = torch.utils.data.DataLoader(
         dataset=trainset,
-        batch_size=len(dataset),
+        batch_size=len(trainset),
         shuffle=False,
         num_workers=num_workers
     )
@@ -224,6 +224,33 @@ def init_model_releated(dataset, lr, momentum, weight_decay, stone1, stone2, ste
     return model_list, optimizer_list, lr_scheduler_list
 
 
+def load_model(dataset, model_dir):
+    model_list = []
+    if dataset == "CIFAR10":
+        model_list.append(BottomModelForCifar10())
+        model_list.append(BottomModelForCifar10())
+        model_list.append(TopModelForCifar10())
+        model_list.append(BottomModelForCifar10())  # set for pretrain
+    elif dataset == "CIFAR100":
+        model_list.append(BottomModelForCifar100())
+        model_list.append(BottomModelForCifar100())
+        model_list.append(TopModelForCifar100())
+        model_list.append(BottomModelForCifar100())  # set for pretrain
+    elif dataset == "CINIC10L":
+        model_list.append(BottomModelForCinic10())
+        model_list.append(BottomModelForCinic10())
+        model_list.append(TopModelForCinic10())
+        model_list.append(BottomModelForCinic10())  # set for pretrain
+    else:
+        raise ValueError
+    
+    saved_model_list = torch.load(model_dir)
+    for i in range(len(model_list)):
+        model_list[i].load_state_dict(saved_model_list["state_dict"][i])
+
+    return model_list
+
+
 def sample_poisoned_source_target_data(dataset, source_label, target_label, poison_budget):
     """
     从给定的数据集中选择源类别和目标类别的样本,并从目标类别中随机选择一定比例的样本进行污染。
@@ -253,15 +280,15 @@ def sample_poisoned_source_target_data(dataset, source_label, target_label, pois
     selected_target_indices = target_indices[torch.randperm(len(target_indices))[:poison_num]]
     selected_target_indices, _ = torch.sort(selected_target_indices)
     
-    # 构建包含选中样本的数据子集
-    selected_indices = torch.cat((selected_source_indices, selected_target_indices))
-    selected_dataset = Subset(dataset, selected_indices)
+    # # 构建包含选中样本的数据子集
+    # selected_indices = torch.cat((selected_source_indices, selected_target_indices))
+    # selected_dataset = Subset(dataset, selected_indices)
     
-    # 创建数据加载器,每个批次包含所有选中的样本
-    batch_size = len(selected_indices)
-    selected_dataloader = torch.utils.data.DataLoader(selected_dataset, batch_size=batch_size, shuffle=False)
+    # # 创建数据加载器,每个批次包含所有选中的样本
+    # batch_size = len(selected_indices)
+    # selected_dataloader = torch.utils.data.DataLoader(selected_dataset, batch_size=batch_size, shuffle=False)
         
-    return selected_source_indices, selected_target_indices, selected_dataloader
+    return selected_source_indices, selected_target_indices
 
 def construct_poison_train_dataloader(
     dataloader: DataLoader,
@@ -377,3 +404,57 @@ def save_checkpoint(state, is_best, save, checkpoint):
     if is_best:
         best_filename = os.path.join(save, "model_best.pth.tar")
         shutil.copyfile(filename, best_filename)
+
+def get_delta_exten(dataset_name, trainset, delta, best_position, selected_target_indices, window_size, half, device):
+    delta_upd = delta.permute(0, 2, 3, 1)
+    
+    if dataset_name in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+        delta_upd = delta_upd * 255.0
+    else:
+        raise ValueError
+    
+    delta_upd = delta_upd.to(torch.uint8)
+    by = best_position[0]
+    bx = best_position[1]
+    delta_exten = torch.zeros_like(torch.from_numpy(trainset.data[selected_target_indices])).to(device)
+    delta_exten[:, by : by + window_size, bx + half : bx + window_size + half, :] = delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
+
+    return delta_exten
+
+def get_poison_train_dataloader(
+    dataset_name, data_dir, batch_size, selected_source_indices, selected_target_indices, delta_exten,
+):
+    transform = _init_transform(dataset_name)
+    trainset, testset = _load_dataset(dataset_name, transform, data_dir)
+
+    # 创建数据加载器
+    num_workers = get_recommended_num_workers()
+    trainset.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta_exten.cpu().numpy(), 0, 255)
+    poison_train_dataloader = torch.utils.data.DataLoader(
+        dataset=trainset,
+        batch_size=batch_size,
+        num_workers=num_workers
+    )
+    
+    return poison_train_dataloader
+
+def get_poison_test_dataloader(
+    dataset_name, data_dir, batch_size, source_label
+):
+    transform = _init_transform(dataset_name)
+    _, testset = _load_dataset(dataset_name, transform, data_dir)
+    
+    num_workers = get_recommended_num_workers()
+    source_label = source_label.item() if torch.is_tensor(source_label) else source_label
+    
+    test_source_indices = np.where(np.array(testset.targets) == source_label)[0]
+        
+    source_poison_testset = Subset(testset, test_source_indices)
+    
+    poison_source_test_dataloader = torch.utils.data.DataLoader(
+        dataset=source_poison_testset,
+        batch_size=batch_size,
+        num_workers=num_workers
+    )
+    
+    return poison_source_test_dataloader

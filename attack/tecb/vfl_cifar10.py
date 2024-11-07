@@ -213,31 +213,23 @@ def train(device, args):
                     args,
                 )
 
-            lr_scheduler_list[0].step()
-            lr_scheduler_list[1].step()
-            lr_scheduler_list[2].step()
+            for scheduler in lr_scheduler_list:
+                scheduler.step()
 
             test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
             )
-            _, test_asr_acc, _ = vfltrainer.test_backdoor(
+            _, test_asr_acc, test_asr_acc5 = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
 
-            print(
-                "epoch:",
-                epoch + 1,
-                "train_loss:",
-                train_loss,
-                "test_loss: ",
-                test_loss,
-                "top1_acc: ",
-                top1_acc,
-                "top5_acc: ",
-                top5_acc,
-                "test_asr_acc: ",
-                test_asr_acc,
-            )
+            print(f"Epoch: {epoch + 1:3d} | "
+                  f"Train Loss: {train_loss:.4f} | "
+                  f"Test Loss: {test_loss:.4f} | "
+                  f"Top1 Acc: {top1_acc:.2f}% | "
+                  f"Top5 Acc: {top5_acc:.2f}% | "
+                  f"ASR Top1: {test_asr_acc:.2f}% | "
+                  f"ASR Top5: {test_asr_acc5:.2f}%")
 
             ## save partyA and partyB model parameters
             if not args.backdoor_start:
@@ -276,104 +268,53 @@ def train(device, args):
                 }
                 torch.save(backdoor_data, os.path.join(save_model_dir, "backdoor.pth"))
 
-        # test
-        print(
-            "##################################test############################################"
-        )
-
-        # load best model and test on test set
-        checkpoint_path = args.save + f"/{seed}_saved_models" + "/model_best.pth.tar"
+        print("Testing Best Model")
+        checkpoint_path = os.path.join(args.save, f"{seed}_saved_models", "model_best.pth.tar")
+        
         if os.path.isfile(checkpoint_path):
-            print("=> loading checkpoint '{}'".format(checkpoint_path))
             checkpoint = torch.load(checkpoint_path)
-            for i in range(len(model_list)):
-                model_list[i].load_state_dict(checkpoint["state_dict"][i])
-            print(
-                "=> loaded checkpoint '{}' (epoch {})".format(
-                    checkpoint_path, checkpoint["epoch"]
-                )
-            )
-        else:
-            print("=> no checkpoint found at '{}'".format(checkpoint_path))
+            for i, model in enumerate(model_list):
+                model.load_state_dict(checkpoint["state_dict"][i])
 
         vfltrainer.update_model(model_list)
 
-        txt_name = f"saved_result"
-        savedStdout = sys.stdout
-        with open(args.save + "/" + txt_name + ".txt", "a") as file:
+        with open(os.path.join(args.save, "saved_result.txt"), "a") as file:
             sys.stdout = file
             test_loss, top1_acc, top5_acc = vfltrainer.test(
                 test_queue, criterion, device, args
             )
-
-            _, asr_top1_acc, _ = vfltrainer.test_backdoor(
+            _, asr_top1_acc, asr_top5_acc = vfltrainer.test_backdoor(
                 non_target_queue, criterion, device, args, delta, target_label
             )
-            print(
-                "################################ Test each seed ############################"
-            )
-            print(
-                "################################ Main Task ############################"
-            )
-            print(
-                "--- epoch: {0}, seed: {1},test_loss: {2}, test_top1_acc: {3}, test_top5_acc: {4} ---".format(
-                    epoch, seed, test_loss, top1_acc, top5_acc
-                )
-            )
 
-            print(
-                "################################ Backdoor Task ############################"
-            )
-            print(
-                "--- epoch: {0}, seed: {1}, test_loss: {2}, test_asr_top1_acc: {3} ---".format(
-                    epoch, seed, test_loss, asr_top1_acc
-                )
-            )
+            print("\nTest Results (Seed {})".format(seed))
+            print("Main Task Metrics:")
+            print(f"Loss: {test_loss:.4f} | "
+                  f"Top1: {top1_acc:.2f}% | "
+                  f"Top5: {top5_acc:.2f}%")
 
-            print(
-                "################################ End Task ############################"
-            )
-            print(
-                "######################################################################"
-            )
+            print("Backdoor Task Metrics:")
+            print(f"ASR Top1: {asr_top1_acc:.2f}% | "
+                  f"ASR Top5: {asr_top5_acc:.2f}%\n")
 
             Main_Top1_acc.update(top1_acc)
             Main_Top5_acc.update(top5_acc)
             ASR_Top1.update(asr_top1_acc)
-            # ASR_Top5.update(asr_top5_acc)
+            ASR_Top5.update(asr_top5_acc)
 
             if seed == 4:
-                print(
-                    "################################ Final Result ############################"
-                )
+                print("Final Results Summary")
+                print("Main Model Performance:")
+                print(f"Top1: {Main_Top1_acc.avg:.2f}% ± {Main_Top1_acc.std_dev():.2f}%")
+                print(f"Top5: {Main_Top5_acc.avg:.2f}% ± {Main_Top5_acc.std_dev():.2f}%")
+                
+                print("Backdoor Performance:")
+                print(f"ASR Top1: {ASR_Top1.avg:.2f}% ± {ASR_Top1.std_dev():.2f}%")
+                print(f"ASR Top5: {ASR_Top5.avg:.2f}% ± {ASR_Top5.std_dev():.2f}%")
 
-                print(
-                    "################################ Main Model ############################"
-                )
-                print(
-                    "Main AVG Top1 acc: ",
-                    Main_Top1_acc.avg,
-                    "Main STD Top1 acc: ",
-                    Main_Top1_acc.std_dev(),
-                    "Main AVG Top5 acc: ",
-                    Main_Top5_acc.avg,
-                    "Main STD Top5 acc: ",
-                    Main_Top5_acc.std_dev(),
-                )
+            sys.stdout = sys.__stdout__
 
-                print(
-                    "################################ Backdoor Model ############################"
-                )
-                print(
-                    "ASR AVG Top1 acc: ",
-                    ASR_Top1.avg,
-                    "ASR STD Top1 acc: ",
-                    ASR_Top1.std_dev(),
-                )
-
-            sys.stdout = savedStdout
-
-        print("Last epoch evaluation saved to txt!")
+        print(f"Results for seed {seed} saved to file")
 
 
 def test(device, args):

@@ -1,7 +1,8 @@
 import os
 import sys
+import copy
 import random
-
+import datetime
 import numpy as np
 from sklearn.utils import shuffle
 
@@ -15,11 +16,11 @@ from attack.badvfl.utils import (
     set_seed, 
     init_model_releated, init_dataloader, 
     sample_poisoned_source_target_data, 
-    construct_poison_train_dataloader, get_source_label_dataloader,
-    save_checkpoint
+    get_poison_train_dataloader, get_poison_test_dataloader, load_model,
+    save_checkpoint, get_delta_exten, get_poison_dataloader
 )
 from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
-from fedml_core.model.baseline.vfl_models import (
+from fedml_core.model.vfl_models import (
     BottomModelForCinic10,
     TopModelForCinic10,
 )
@@ -27,13 +28,14 @@ from fedml_core.trainer.badvfl_trainer import BadVFLTrainer
 from fedml_core.utils.utils import (
     AverageMeter,
     keep_predict_loss,
+    over_write_args_from_file,
 )
 from torch.utils.data import Subset
+from fedml_core.utils.logger import setup_logger
 
 
 def train(args, logger):
     ASR_Top1 = AverageMeter()
-    ASR_Top5 = AverageMeter()
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
     
@@ -45,7 +47,7 @@ def train(args, logger):
             os.makedirs(save_model_dir)
 
         # 加载基础数据
-        train_dataloader, test_dataloader = init_dataloader(
+        train_dataloader, train_dataloader_nobatch, test_dataloader = init_dataloader(
             args.dataset, args.data_dir, args.batch_size
         )
         # 加载模型
@@ -63,25 +65,25 @@ def train(args, logger):
         pre_train_loss = []
         for _ in range(args.pre_train_epochs):
             loss = trainer.pre_train(
-                train_dataloader, criterion, bottom_criterion, optimizer_list, args, 
+                train_dataloader, criterion, optimizer_list, args, 
             )
             pre_train_loss.append(loss)
         logger.info(f"Pre-Train Loss: [{', '.join([f'{l:.4f}' for l in pre_train_loss])}]")
         
         # Optimal select label
         source_label, target_label = trainer.select_closest_class_pair(
-            train_dataloader, args
+            train_dataloader_nobatch, args
         )
-        selected_source_indices, selected_target_indices, selected_dataloader = sample_poisoned_source_target_data(
+        selected_source_indices, selected_target_indices = sample_poisoned_source_target_data(
             train_dataloader.dataset, source_label, target_label, args.poison_budget
         )
         logger.info(f"source_label: {source_label}, target_label: {target_label}")
         
         # Set trigger
         logger.info("###### Train Trigger ######") 
-       
+        print(len(selected_source_indices))
         best_position = trainer.find_optimal_trigger_position(
-            train_dataloader, source_label, criterion, optimizer_list, args
+            train_dataloader_nobatch, selected_source_indices, criterion, optimizer_list, args
         )
         
         delta = torch.full((1, 3, args.window_size, args.window_size), 0.0).to(args.device)
@@ -90,20 +92,21 @@ def train(args, logger):
         trigger_loss= []
         for _ in range(args.trigger_train_epochs):
             delta, loss = trainer.train_trigger(
-                selected_dataloader, best_position, delta, trigger_optimizer, args
+                train_dataloader_nobatch, selected_source_indices, selected_target_indices,best_position, delta, trigger_optimizer, args
             )
             trigger_loss.append(loss)
         logger.info(f"Trigger Train Loss: [{', '.join([f'{l:.4f}' for l in trigger_loss])}]")
+        logger.info(f"best_position: {best_position}, delta: {delta}")
         
         # Set poison data
-        poison_train_dataloader = construct_poison_train_dataloader(
-            train_dataloader, args.dataset, selected_source_indices, selected_target_indices, delta, best_position, args
+        dataset = copy.deepcopy(train_dataloader.dataset)
+        delta_exten = get_delta_exten(
+            args.dataset, dataset, delta, best_position, selected_target_indices, args.window_size, args.half, args.device)
+        poison_train_dataloader = get_poison_train_dataloader(
+            args.dataset, args.data_dir, args.batch_size, selected_source_indices, selected_target_indices, delta_exten
         )
-        convert_delta = trainer.convert_delta(
-            train_dataloader, best_position, delta, args
-        )
-        source_label_dataloader = get_source_label_dataloader(
-            test_dataloader, args.dataset, source_label, args
+        poison_source_test_dataloader = get_poison_test_dataloader(
+            args.dataset, args.data_dir, args.batch_size, source_label
         )
         
         # Trian VFL
@@ -126,8 +129,8 @@ def train(args, logger):
             test_loss, top1_acc, top5_acc = trainer.test(
                 test_dataloader, criterion, args
             )
-            _, test_asr_acc, test_asr_acc5 = trainer.test_backdoor(
-                source_label_dataloader, criterion, convert_delta, target_label, args
+            _, test_asr_acc, _ = trainer.test_backdoor(
+                poison_source_test_dataloader, criterion, delta, best_position, target_label, args
             )
 
             print(f"Epoch: {epoch + 1:3d} | "
@@ -135,16 +138,22 @@ def train(args, logger):
                   f"Test Loss: {test_loss:.4f} | "
                   f"Top1 Acc: {top1_acc:.2f}% | "
                   f"Top5 Acc: {top5_acc:.2f}% | "
-                  f"ASR Top1: {test_asr_acc:.2f}% | "
-                  f"ASR Top5: {test_asr_acc5:.2f}%")
+                  f"ASR Top1: {test_asr_acc:.2f}% ")
 
             if not args.backdoor_start:
-                is_best = top1_acc >= best_asr
-                best_asr = max(top1_acc, best_asr)
+                is_best = top1_acc >= best_score
+                if is_best:
+                    best_score, best_top1_acc = top1_acc, top1_acc
             else:
-                total_value = test_asr_acc + top1_acc
-                is_best = total_value >= best_asr
-                best_asr = max(total_value, best_asr)
+                # Dynamically adjust the weight over epochs
+                epoch_ratio = epoch / args.epochs
+                weight_asr = min(0.5 + 0.5 * epoch_ratio, 1.0)  # Example: gradually increase ASR importance
+                weight_top1 = 1.0 - weight_asr
+                total_value = weight_asr * test_asr_acc + weight_top1 * top1_acc
+                
+                is_best = total_value >= best_score
+                if is_best:
+                    best_score, best_top1_acc, best_asr = total_value, top1_acc, test_asr_acc
 
             save_model_dir = os.path.join(args.save, f"{seed}_saved_models")
             os.makedirs(save_model_dir, exist_ok=True)
@@ -158,9 +167,10 @@ def train(args, logger):
                 }, is_best, save_model_dir, f"checkpoint_{epoch:04d}.pth.tar")
 
                 backdoor_data = {
-                    "delta": convert_delta,
                     "source_label": source_label,
-                    "target_label": target_label
+                    "target_label": target_label,
+                    "delta": delta,
+                    "best_position": best_position,
                 }
                 torch.save(backdoor_data, os.path.join(save_model_dir, "backdoor.pth"))
 
@@ -171,7 +181,6 @@ def train(args, logger):
             checkpoint = torch.load(checkpoint_path)
             for i, model in enumerate(model_list):
                 model.load_state_dict(checkpoint["state_dict"][i])
-        
         trainer.update_model(model_list)
         
         with open(os.path.join(args.save, "saved_result.txt"), "a") as file:
@@ -179,8 +188,8 @@ def train(args, logger):
             test_loss, top1_acc, top5_acc = trainer.test(
                 test_dataloader, criterion, args
             )
-            _, asr_top1_acc, asr_top5_acc = trainer.test_backdoor(
-                source_label_dataloader, criterion, convert_delta, target_label, args
+            _, asr_top1_acc, _ = trainer.test_backdoor(
+                poison_source_test_dataloader, criterion, delta, best_position, target_label, args
             )
 
             print("\nTest Results (Seed {})".format(seed))
@@ -190,13 +199,11 @@ def train(args, logger):
                   f"Top5: {top5_acc:.2f}%")
 
             print("Backdoor Task Metrics:")
-            print(f"ASR Top1: {asr_top1_acc:.2f}% | "
-                  f"ASR Top5: {asr_top5_acc:.2f}%\n")
+            print(f"ASR Top1: {asr_top1_acc:.2f}% \n")
 
             Main_Top1_acc.update(top1_acc)
             Main_Top5_acc.update(top5_acc)
             ASR_Top1.update(asr_top1_acc)
-            ASR_Top5.update(asr_top5_acc)
 
             if seed == args.seed_num-1:
                 print("Final Results Summary")
@@ -206,99 +213,53 @@ def train(args, logger):
                 
                 print("Backdoor Performance:")
                 print(f"ASR Top1: {ASR_Top1.avg:.2f}% ± {ASR_Top1.std_dev():.2f}%")
-                print(f"ASR Top5: {ASR_Top5.avg:.2f}% ± {ASR_Top5.std_dev():.2f}%")
 
             sys.stdout = sys.__stdout__
 
         print(f"Results for seed {seed} saved to file")
 
-def test():
-    """需要修改
-    """
-    # 加载模型
-    save_model_dir = args.save
-    checkpoint_path = save_model_dir + "/model_best.pth.tar"
-    checkpoint = torch.load(checkpoint_path)
+def test(args):
+    model_dir = args.save + "/model_best.pth.tar"
+    model_list = load_model(args.dataset, model_dir)
 
-    # 加载后门攻击信息
-    backdoor_data = torch.load(save_model_dir + "/backdoor.pth")
+    backdoor_data = torch.load(args.save + "/backdoor.pth")
     delta = backdoor_data.get("delta", None)
+    source_label = backdoor_data.get("source_label", None)
     target_label = backdoor_data.get("target_label", None)
-
-    # load model
-    model_list = []
-    model_list.append(BottomModelForCinic10())
-    model_list.append(BottomModelForCinic10())
-    model_list.append(TopModelForCinic10())
-
-    criterion = nn.CrossEntropyLoss().to(device)
-    bottom_criterion = keep_predict_loss
-
-    # 加载每个模型的参数
-    for i in range(len(model_list)):
-        model_list[i].load_state_dict(checkpoint["state_dict"][i])
-
-    # load data
-    # Data normalization and augmentation (optional)
-    transform = transforms.Compose(
-        [
-            transforms.Lambda(image_format_2_rgb),
-            transforms.Resize((32, 32)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                (0.47889522, 0.47227842, 0.43047404),
-                (0.24205776, 0.23828046, 0.25874835),
-            ),
-        ]
+    delta = backdoor_data.get("delta", None)
+    best_position = backdoor_data.get("best_position", None)
+    
+    _, _, test_dataloader = init_dataloader(
+        args.dataset, args.data_dir, args.batch_size
     )
-
-    # Load CIFAR-10 dataset
-    trainset = CINIC10L(root=args.data_dir, split="/train", transform=transform)
-    testset = CINIC10L(root=args.data_dir, split="/test", transform=transform)
-
-    target_indices = np.where(np.array(trainset.targets) == target_label)[0]
-    non_target_indices = np.where(np.array(testset.targets) != target_label)[0]
-    non_target_set = Subset(testset, non_target_indices)
-
-    train_queue = torch.utils.data.DataLoader(
-        dataset=trainset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.workers,
+    poison_source_test_dataloader = get_poison_test_dataloader(
+        args.dataset, args.data_dir, args.batch_size, source_label
     )
-    test_queue = torch.utils.data.DataLoader(
-        dataset=testset, batch_size=args.batch_size, num_workers=args.workers
-    )
-    non_target_queue = torch.utils.data.DataLoader(
-        dataset=non_target_set, batch_size=args.batch_size, num_workers=args.workers
-    )
+    
+    criterion = nn.CrossEntropyLoss().to(args.device)
 
-    print(
-        "################################ Test Backdoor Models ############################"
+    trainer = BadVFLTrainer(model_list)
+    
+    test_loss, top1_acc, top5_acc = trainer.test(
+        test_dataloader, criterion, args
     )
-    vfltrainer = BadVFLTrainer(model_list)
-    test_loss, top1_acc, top5_acc = vfltrainer.test(test_queue, criterion, device, args)
-
-    test_loss, test_asr_acc, _ = vfltrainer.test_backdoor(
-        non_target_queue, criterion, device, args, delta, target_label
+    _, asr_top1_acc, _ = trainer.test_backdoor(
+        poison_source_test_dataloader, criterion, delta, best_position, target_label, args
     )
-    print(
-        "test_loss: ",
-        test_loss,
-        "top1_acc: ",
-        top1_acc,
-        "top5_acc: ",
-        top5_acc,
-        "test_asr_acc: ",
-        test_asr_acc,
-    )
+    
+    print("Main Task Metrics:")
+    print(f"Loss: {test_loss:.4f} | "
+            f"Top1: {top1_acc:.2f}% | "
+            f"Top5: {top5_acc:.2f}%")
 
-
-
+    print("Backdoor Task Metrics:")
+    print(f"ASR Top1: {asr_top1_acc:.2f}% \n")
+    
 
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    default_data_path = os.path.abspath("../../data/cinic/")
+    default_data_path = os.path.abspath("../../data/")
+    default_yaml_path = os.path.abspath("../badvfl/best_configs/cifar10_bestattack.yml")
     default_save_path = os.path.abspath("../../results/models/BadVFL/cifar10")
 
     parser = argparse.ArgumentParser("badvfl_cifar10")
@@ -315,6 +276,8 @@ if __name__ == "__main__":
     experiment_group.add_argument("--log_file_name", type=str, default="experiment.log", help="log name")
     experiment_group.add_argument("--resume", default="", type=str, metavar="PATH", help="path to latest checkpoint")
     experiment_group.add_argument("--seed_num", type=int, default=3, help="repeat num.")
+    experiment_group.add_argument("--yaml_path", type=str, default=default_yaml_path, help="attack yaml file")
+    experiment_group.add_argument("--load_yaml", action="store_true", default=False, help="backdoor")
     
     # 模型相关参数
     model_group = parser.add_argument_group('Model')
@@ -328,6 +291,7 @@ if __name__ == "__main__":
     training_group = parser.add_argument_group('Training')
     training_group.add_argument("--epochs", type=int, default=80, help="num of training epochs")
     training_group.add_argument("--start_epoch", default=0, type=int, metavar="N", help="manual epoch number (useful on restarts)")
+    training_group.add_argument("--backdoor_start_epoch", default=40, type=int, metavar="N", help="manual epoch number (useful on restarts)")
     training_group.add_argument("--batch_size", type=int, default=256, help="batch size")
     training_group.add_argument("--lr", type=float, default=0.1, help="init learning rate")
     training_group.add_argument("--momentum", type=float, default=0.9, help="momentum")
@@ -370,11 +334,14 @@ if __name__ == "__main__":
 
 
     args = parser.parse_args()
+    if args.load_yaml:
+        over_write_args_from_file(args, args.yaml_path)
+        
     args.device = device
     
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    args.timestamp = timestamp
-    args.save = os.path.join(args.save, timestamp)
+    # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # args.timestamp = timestamp
+    # args.save = os.path.join(args.save, timestamp)
 
     if not os.path.exists(args.save):
         os.makedirs(args.save)
@@ -385,4 +352,4 @@ if __name__ == "__main__":
     # 记录所有的参数信息
     logger.info(f"Experiment arguments: {args}")
     
-    main(logger=logger, args=args)
+    train(logger=logger, args=args)

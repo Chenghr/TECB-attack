@@ -13,10 +13,9 @@ from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
 from fedml_core.model.vfl_models import (
     BottomModelForCifar10,
     TopModelForCifar10,
-    LocalClassifierForCifar10,
 )
 # from fedml_core.trainer.vfl_trainer import VFLTrainer
-from fedml_core.trainer.badvfl_trainer_old import BadVFLTrainer
+from fedml_core.trainer.villain_trainer import VillainTrainer
 from fedml_core.utils.utils import (
     AverageMeter,
     keep_predict_loss,
@@ -28,7 +27,6 @@ from fedml_core.utils.logger import setup_logger
 import torch
 import torch.nn as nn
 import argparse
-import time
 import glob
 import shutil
 import torchvision.transforms as transforms
@@ -80,11 +78,12 @@ def set_dataset_basic(args):
     
     # CIFAR-10 类别标签（以类别名称的列表形式给出）
     classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
+    target_class = args.target_class
+    target_label = classes.index(target_class)
     train_queue = torch.utils.data.DataLoader(
         dataset=trainset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=args.workers,
     )
     train_queue_nobatch = torch.utils.data.DataLoader(
@@ -97,58 +96,14 @@ def set_dataset_basic(args):
     )
     # 找出所有属于这个类别的样本的索引
     # 从目标索引中随机选择 poison_num 个索引, 作为毒样本
-    return trainset, train_queue, train_queue_nobatch, test_queue
+    return trainset, train_queue, train_queue_nobatch, test_queue, target_label
 
-def set_dataset_poison(selected_source_indices, selected_target_indices, delta, source_label, args):
-    # load data
-    train_transform = transforms.Compose([
-        transforms.ToTensor(),
-    ])
-
-    # Load CIFAR-10 dataset
-    # 唯一的区别是，IndexedCIFAR10 类返回的图片的第三个元素是图片的索引
-    trainset = IndexedCIFAR10(root='../../data', train=True, download=True, transform=train_transform)
-    testset = IndexedCIFAR10(root='../../data', train=False, download=True, transform=train_transform)
-    
-    # CIFAR-10 类别标签（以类别名称的列表形式给出）
-    classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-    selected_source_set = Subset(trainset, selected_source_indices)
-    selected_source_queue = torch.utils.data.DataLoader(
-        dataset=selected_source_set,
-        batch_size=args.batch_size,
-        num_workers=args.workers
-    )
-    poison_train_set = copy.deepcopy(trainset)
-    poison_train_set.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta.cpu().numpy(), 0, 255)
-    poison_train_queue = torch.utils.data.DataLoader(
-        dataset=poison_train_set,
-        batch_size=args.batch_size,
-        num_workers=args.workers
-    )
-    poison_test_set = copy.deepcopy(testset)
-    poison_test_queue = torch.utils.data.DataLoader(
-        dataset=poison_test_set,
-        batch_size=args.batch_size,
-        num_workers=args.workers
-    )
-    test_source_indices = np.where(np.array(testset.targets) == source_label)[0]
-    source_poison_testset = Subset(poison_test_set, test_source_indices)
-    poison_source_test_queue = torch.utils.data.DataLoader(
-        dataset=source_poison_testset,
-        batch_size=args.batch_size,
-        num_workers=args.workers
-    )
-    return selected_source_queue, poison_train_queue, poison_source_test_queue
-
-
-
-def set_badvfl_model_releated(args, logger):
+def set_villain_model_releated(args, logger):
     # build model
     model_list = []
     model_list.append(BottomModelForCifar10())
     model_list.append(BottomModelForCifar10())
     model_list.append(TopModelForCifar10())
-    model_list.append(BottomModelForCifar10())  # 作为一个完整的模型，可以进行分类任务
 
     # optimizer and stepLR
     optimizer_list = [
@@ -160,7 +115,7 @@ def set_badvfl_model_releated(args, logger):
         )
         for model in model_list
     ]
-
+    optimizer_list[1].param_groups[0]['lr'] = args.local_lr
     stone1 = args.stone1  # 50 int(args.epochs * 0.5) 学习率衰减的epoch数
     lr_scheduler_list = [
         torch.optim.lr_scheduler.MultiStepLR(
@@ -176,32 +131,10 @@ def set_badvfl_model_releated(args, logger):
         model_list = load_checkpoint(model_list, args.resume, logger)
 
     return model_list, optimizer_list, lr_scheduler_list
-
-def pre_train(trainset, badvfltrainer, train_queue, train_queue_nobatch, criterion, bottom_criterion, optimizer_list, device, args, logger):
-    classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-    loss = []
-    for epoch in range(args.pre_train_epochs):
-        train_loss = badvfltrainer.pre_train(
-            train_queue, criterion, bottom_criterion, optimizer_list, device, args, 
-        )
-        loss.append(train_loss)
-    logger.info(f"pretrain loss: {loss}")
     
-    # select source sample
-    source_class, target_class = badvfltrainer.pairwise_distance_min(train_queue_nobatch, device, args)
-    source_label = classes.index(source_class)
-    target_label = classes.index(target_class)
-    source_indices = np.where(np.array(trainset.targets) == source_label)[0]
-    target_indices = np.where(np.array(trainset.targets) == target_label)[0]
-    target_num = np.sum(np.array(trainset.targets) == target_label)
-    poison_num = int(args.poison_budget * target_num)
-    selected_source_indices = np.sort(np.random.choice(source_indices, poison_num, replace=False))
-    selected_target_indices = np.sort(np.random.choice(target_indices, poison_num, replace=False))
-    
-    return source_label, target_label, selected_source_indices, selected_target_indices
 
 
-def Train(device, args, logger):
+def main(device, args, logger):
     ASR_Top1 = AverageMeter()
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
@@ -214,50 +147,21 @@ def Train(device, args, logger):
             os.makedirs(save_model_dir)
             
         # Load data
-        trainset, train_queue, train_queue_nobatch, test_queue = set_dataset_basic(args)
+        trainset, train_queue, train_queue_nobatch, test_queue, target_label = set_dataset_basic(args)
+        target_indices = np.where(np.array(trainset.targets) == target_label)[0]
 
         # Build model
-        model_list, optimizer_list, lr_scheduler_list = set_badvfl_model_releated(args, logger)
-        badvfltrainer = BadVFLTrainer(model_list)
+        model_list, optimizer_list, lr_scheduler_list= set_villain_model_releated(args, logger)
+        villain_trainer = VillainTrainer(model_list)
         
         criterion = nn.CrossEntropyLoss().to(device)
         bottom_criterion = keep_predict_loss
 
-        # Pre-train
-        logger.info("###### Pre-Trained ######")
-        source_label, target_label, selected_source_indices, selected_target_indices = pre_train(
-            trainset,badvfltrainer, train_queue, train_queue_nobatch, criterion, bottom_criterion, optimizer_list, device, args, logger
-        )
-        logger.info(f"source_label: {source_label}, target_label: {target_label}")
-
         # Set trigger
-        logger.info("###### Train Trigger ######") 
-        best_position = badvfltrainer.optimal_trigger_injection(
-            train_queue_nobatch, selected_source_indices, criterion, optimizer_list, device, args)
-        delta = torch.full((1, 3, args.window_size, args.window_size), 0.0).to(device)
-        for epoch in range(args.trigger_train_epochs):
-            trigger_optimizer = torch.optim.SGD([delta], 0.25)
-            delta = badvfltrainer.train_trigger(train_queue_nobatch, device, selected_source_indices, 
-                                            selected_target_indices, delta, best_position, trigger_optimizer, args)
-        logger.info(f"best_position: {best_position}, delta: {delta}")
-        
-        torch.save(best_position, os.path.join(save_model_dir, "best_position.pth"))
-        torch.save(delta, os.path.join(save_model_dir, "delta.pth"))
-        
-        # Set a 9-pixel pattern to 1
-        # delta[:, 0:3, 0:3] = 1
-        
-        # Set poison dataset
-        poison_train_set = copy.deepcopy(trainset)
-        delta_upd = delta.permute(0, 2, 3, 1)
-        delta_upd = delta_upd * 255.0
-        delta_upd = delta_upd.to(torch.uint8)
-        by = best_position[0]
-        bx = best_position[1]
-        delta_exten = torch.zeros_like(torch.from_numpy(poison_train_set.data[selected_target_indices])).to(device)
-        delta_exten[:, by : by + args.window_size, bx + args.half : bx + args.window_size + args.half, :] = delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
-        selected_source_queue, poison_train_queue, poison_source_test_queue = set_dataset_poison(selected_source_indices, selected_target_indices, delta_exten, source_label, args)
-
+        logger.info("###### Generate Trigger ######") 
+        mask_list = {}
+        delta, mask_list = villain_trainer.trigger_gen(train_queue, target_indices, device, args)
+        print(f"delta: {delta}")
         # Trian VFL
         logger.info("###### Train Federated Models ######") 
         best_score, best_top1_acc, best_asr = 0.0, 0.0, 0.0
@@ -267,11 +171,11 @@ def Train(device, args, logger):
 
             # train_loss, delta = vfltrainer.train_narcissus(train_queue, criterion, bottom_criterion,optimizer_list, device, args, delta, selected_indices, trigger_optimizer)
             if args.backdoor_start:
-                train_loss = badvfltrainer.train_mul(
-                    poison_train_queue, criterion, bottom_criterion, optimizer_list, device, args
+                train_loss = villain_trainer.train_with_trigger(
+                    train_queue, delta, mask_list, criterion, bottom_criterion, optimizer_list, device, args
                 )
             else:
-                train_loss = badvfltrainer.train_mul(
+                train_loss = villain_trainer.train(
                     train_queue, criterion, bottom_criterion, optimizer_list, device, args
                 )
 
@@ -279,15 +183,15 @@ def Train(device, args, logger):
             lr_scheduler_list[1].step()
             lr_scheduler_list[2].step()
 
-            test_loss, top1_acc, top5_acc = badvfltrainer.test(
+            test_loss, top1_acc, top5_acc = villain_trainer.test_mul(
                 test_queue, criterion, device, args
             )
-            _, test_asr_acc, _ = badvfltrainer.test_backdoor_mul(
-                poison_source_test_queue, criterion, device, args, delta, best_position, target_label
+            test_asr_acc, _ =villain_trainer.test_backdoor(
+                test_queue, delta, target_label, device, args
             )
 
             logger.info(
-                f"epoch: {epoch + 1}, train_loss: {train_loss:.5f}, test_loss: {test_loss:.5f}, "
+                    f"epoch: {epoch + 1}, train_loss: {train_loss:.5f}, test_loss: {test_loss:.5f}"
                 f"top1_acc: {top1_acc:.5f}, top5_acc: {top5_acc:.5f}, test_asr_acc: {test_asr_acc:.5f}"
             )
 
@@ -344,31 +248,31 @@ def Train(device, args, logger):
 
 
 if __name__ == "__main__":
-    default_config_path = os.path.abspath("../../attack/badvfl/best_configs/cifar10_bestattack.yml")
+    default_config_path = os.path.abspath("../../attack/villain/best_configs/cifar10_bestattack.yml")
     default_data_path = os.path.abspath("../../data/")
-    default_save_path = os.path.abspath("../../results/models/BadVFL/cifar10")
-
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    default_save_path = os.path.abspath("../../results/models/Villain/cifar10")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print(device)
 
-    parser = argparse.ArgumentParser("badvfl_cifar10")
+    parser = argparse.ArgumentParser("villain_cifar10")
 
     # 数据相关参数
     data_group = parser.add_argument_group('Data')
-    data_group.add_argument("--data_dir", default="./data/CIFAR10/", help="location of the data corpus")
+    data_group.add_argument("--data_dir", default="../../data/CIFAR10/", help="location of the data corpus")
     data_group.add_argument("--dataset", default="CIFAR10", type=str, choices=[
         "CIFAR10", "CIFAR100", "TinyImageNet", "CINIC10L", "Yahoo", "Criteo", "BCW"
     ], help="name of dataset")
 
     # 实验相关参数
     experiment_group = parser.add_argument_group('Experiment')
-    experiment_group.add_argument("--name", type=str, default="badvfl_cifar10", help="experiment name")
-    experiment_group.add_argument("--save", default="./results/models/BadVFL/cifar10", type=str, metavar="PATH", help="path to save checkpoint")
+    experiment_group.add_argument("--name", type=str, default="villain_cifar10", help="experiment name")
+    experiment_group.add_argument("--save", default=default_save_path, type=str, metavar="PATH", help="path to save checkpoint")
     experiment_group.add_argument("--log_file_name", type=str, default="experiment.log", help="log name")
 
     # 训练相关参数
     training_group = parser.add_argument_group('Training')
-    training_group.add_argument("--batch_size", type=int, default=256, help="batch size")
+    training_group.add_argument("--batch_size", type=int, default=1024, help="batch size")
     training_group.add_argument("--lr", type=float, default=0.1, help="init learning rate")
     training_group.add_argument("--trigger_lr", type=float, default=0.001, help="init learning rate for trigger")
     training_group.add_argument("--momentum", type=float, default=0.9, help="momentum")
@@ -398,14 +302,15 @@ if __name__ == "__main__":
     backdoor_group.add_argument("--alpha", type=float, default=0.02, help="uap learning rate decay")
     backdoor_group.add_argument("--eps", type=float, default=16 / 255, help="uap clamp bound")
     backdoor_group.add_argument("--corruption_amp", type=float, default=5.0, help="amplification of corruption")
-    backdoor_group.add_argument("--backdoor_start", action="store_true", default=False, help="backdoor")
+    backdoor_group.add_argument("--backdoor_start", action="store_true", default=True, help="backdoor")
+    backdoor_group.add_argument("--pre_train_epoch", type=int, default=10, help="pre train epoch")
     backdoor_group.add_argument("--poison_budget", type=float, default=0.1, help="poison sample fraction")
-    backdoor_group.add_argument("--optimal_sel", action="store_true", default=True, help="optimal select tartget class")
-    backdoor_group.add_argument("--saliency_map_injection", action="store_true", default=True, help="optimal select trigger loaction")
-    backdoor_group.add_argument("--pre_train_epochs", default=20, type=int, metavar="N", help="")
-    backdoor_group.add_argument("--trigger_train_epochs", default=40, type=int, metavar="N", help="")
-    backdoor_group.add_argument("--window_size", default=3, type=int, metavar="N", help="")
-    
+    backdoor_group.add_argument("--beta", type=float, default=0.4, help="controling trigger magnitude")
+    backdoor_group.add_argument("--gamma_up", type=float, default=1.2, help="upper bound of shifting")
+    backdoor_group.add_argument("--gamma_low", type=float, default=0.6, help="lower bound of shifting")
+    backdoor_group.add_argument("--dropout_ratio", type=float, default=0.25, help="dropout ratio")
+    backdoor_group.add_argument("--target_class", type=str, default="cat", help="target class index")
+    backdoor_group.add_argument("--local_lr", type=float, default=0.5, help="local learning rate")
     
     # 防御相关参数
     # defense_group = parser.add_argument_group('Defense')
@@ -419,18 +324,17 @@ if __name__ == "__main__":
     # defense_group.add_argument("--gc_ratio", type=float, default=0.01, help="gc defense ratio")
     # defense_group.add_argument("--lap_noise_ratio", type=float, default=0.01, help="lap_noise defense ratio")
 
-    # # 配置文件相关参数
+    # 配置文件相关参数
     # config_group = parser.add_argument_group('Config')
-    # config_group.add_argument("--c", type=str, default="/../configs/BadVFL/cifar10_test.yml", help="config file")
+    # config_group.add_argument("--c", type=str, default="./configs/BadVFL/cifar10_test.yml", help="config file")
 
+    # 半特征相关参数
     parser.add_argument(
         "--c",
         type=str,
         default=default_config_path,
         help="config file",
     )
-
-    # 半特征相关参数
     feature_group = parser.add_argument_group('Feature')
     feature_group.add_argument("--half", type=int, default=16, help="half number of features")
 
@@ -450,4 +354,4 @@ if __name__ == "__main__":
     # 记录所有的参数信息
     logger.info(f"Experiment arguments: {args}")
     
-    Train(logger=logger, device=device, args=args)
+    main(logger=logger, device=device, args=args)
