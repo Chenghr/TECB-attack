@@ -289,11 +289,11 @@ if __name__ == "__main__":
     
     # 训练相关参数
     training_group = parser.add_argument_group('Training')
-    training_group.add_argument("--epochs", type=int, default=80, help="num of training epochs")
+    training_group.add_argument("--epochs", type=int, default=60, help="num of training epochs")
     training_group.add_argument("--start_epoch", default=0, type=int, metavar="N", help="manual epoch number (useful on restarts)")
-    training_group.add_argument("--backdoor_start_epoch", default=40, type=int, metavar="N", help="manual epoch number (useful on restarts)")
-    training_group.add_argument("--batch_size", type=int, default=256, help="batch size")
-    training_group.add_argument("--lr", type=float, default=0.1, help="init learning rate")
+    training_group.add_argument("--backdoor_start_epoch", default=20, type=int, metavar="N", help="manual epoch number (useful on restarts)")
+    training_group.add_argument("--batch_size", type=int, default=64, help="batch size")
+    training_group.add_argument("--lr", type=float, default=0.02, help="init learning rate")
     training_group.add_argument("--momentum", type=float, default=0.9, help="momentum")
     training_group.add_argument("--weight_decay", type=float, default=5e-4, help="weight decay")
     training_group.add_argument("--decay_period", type=int, default=1, help="epochs between two learning rate decays")
@@ -302,7 +302,7 @@ if __name__ == "__main__":
     training_group.add_argument("--grad_clip", type=float, default=5.0, help="gradient clipping")
     training_group.add_argument("--gamma", type=float, default=0.97, help="learning rate decay")
     training_group.add_argument("--step_gamma", default=0.1, type=float, metavar="S", help="gamma for step scheduler")
-    training_group.add_argument("--workers", type=int, default=0, help="num of workers")
+    training_group.add_argument("--workers", type=int, default=8, help="num of workers")
     training_group.add_argument("--report_freq", type=float, default=10, help="report frequency")
 
     # 后门相关参数
@@ -317,7 +317,7 @@ if __name__ == "__main__":
     backdoor_group.add_argument("--saliency_map_injection", action="store_true", default=True, help="optimal select trigger loaction")
     backdoor_group.add_argument("--pre_train_epochs", default=20, type=int, metavar="N", help="")
     backdoor_group.add_argument("--trigger_train_epochs", default=40, type=int, metavar="N", help="")
-    backdoor_group.add_argument("--window_size", default=3, type=int, metavar="N", help="")
+    backdoor_group.add_argument("--window_size", default=5, type=int, metavar="N", help="")
     
     
     # 防御相关参数
