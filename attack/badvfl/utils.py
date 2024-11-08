@@ -5,6 +5,7 @@ import shutil
 
 import numpy as np
 from sklearn.utils import shuffle
+from PIL import Image
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
 import argparse
@@ -63,7 +64,7 @@ def get_recommended_num_workers():
     cpu_count = mp.cpu_count()
     
     # 一般建议设置为CPU核心数的2-4倍
-    recommended = min(cpu_count * 4, 16)  # 设置上限为16
+    recommended = min(cpu_count * 4, 8)  # 设置上限为16
     
     return recommended
     
@@ -224,7 +225,10 @@ def init_model_releated(dataset, lr, momentum, weight_decay, stone1, stone2, ste
     return model_list, optimizer_list, lr_scheduler_list
 
 
-def load_model(dataset, model_dir):
+def load_model_and_backdoor_data(dataset, save_dir):
+    model_dir = os.path.join(save_dir, "/model_best.pth.tar")
+    backdoor_data_dir = os.path.join(save_dir, "/backdoor.pth")
+    
     model_list = []
     if dataset == "CIFAR10":
         model_list.append(BottomModelForCifar10())
@@ -248,7 +252,9 @@ def load_model(dataset, model_dir):
     for i in range(len(model_list)):
         model_list[i].load_state_dict(saved_model_list["state_dict"][i])
 
-    return model_list
+    backdoor_data = torch.load(backdoor_data_dir)
+    
+    return model_list, backdoor_data
 
 
 def sample_poisoned_source_target_data(dataset, source_label, target_label, poison_budget):
@@ -416,8 +422,23 @@ def get_delta_exten(dataset_name, trainset, delta, best_position, selected_targe
     delta_upd = delta_upd.to(torch.uint8)
     by = best_position[0]
     bx = best_position[1]
-    delta_exten = torch.zeros_like(torch.from_numpy(trainset.data[selected_target_indices])).to(device)
-    delta_exten[:, by : by + window_size, bx + half : bx + window_size + half, :] = delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
+    
+    # 获取单个图片的形状
+    if hasattr(trainset, 'data'):
+        img_shape = trainset.data[selected_target_indices[0]].shape  # (H, W, C)
+        delta_exten = torch.zeros(img_shape, dtype=torch.uint8).to(device)
+        
+        # 只取 delta_upd 的第一个元素 [0]，因为我们只需要一个模板
+        delta_exten[by:by + window_size, bx + half:bx + window_size + half, :] = \
+            delta_upd[0].detach().clone()
+    else:
+        # 对于 ImageFolder 类型的数据集
+        img_path = trainset.image_paths[selected_target_indices[0]][0]
+        img_shape = np.array(Image.open(img_path)).shape  # (H, W, C)
+        delta_exten = torch.zeros(img_shape, dtype=torch.uint8).to(device)
+        
+        delta_exten[by:by + window_size, bx + half:bx + window_size + half, :] = \
+            delta_upd[0].detach().clone()
 
     return delta_exten
 
@@ -425,11 +446,35 @@ def get_poison_train_dataloader(
     dataset_name, data_dir, batch_size, selected_source_indices, selected_target_indices, delta_exten,
 ):
     transform = _init_transform(dataset_name)
-    trainset, testset = _load_dataset(dataset_name, transform, data_dir)
+    trainset, _ = _load_dataset(dataset_name, transform, data_dir)
 
-    # 创建数据加载器
+    delta_numpy = delta_exten.cpu().numpy()
+    delta_numpy = np.tile(delta_numpy, (len(selected_source_indices), 1, 1, 1))
+        
+    if hasattr(trainset, 'data'):
+        source_images = trainset.data[selected_source_indices]
+        
+        assert source_images.shape == delta_numpy.shape, \
+            f"Shape mismatch: source {source_images.shape} vs delta {delta_numpy.shape}"
+        
+        modified_images = source_images + delta_numpy
+        clipped_images = np.clip(modified_images, 0, 255).astype(np.uint8)
+        trainset.data[selected_target_indices] = clipped_images
+    else:
+        # 1. 获取源图像数据
+        source_images = []
+        for idx in selected_source_indices:
+            img_path = trainset.image_paths[idx][0]
+            img = np.array(Image.open(img_path))
+            source_images.append(img)
+        source_images = np.stack(source_images)
+        modified_images = source_images + delta_numpy
+        clipped_images = np.clip(modified_images, 0, 255).astype(np.uint8)
+        
+        # 5. 更新目标索引的图像
+        trainset.modify_images(selected_target_indices, clipped_images)
+        
     num_workers = get_recommended_num_workers()
-    trainset.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta_exten.cpu().numpy(), 0, 255)
     poison_train_dataloader = torch.utils.data.DataLoader(
         dataset=trainset,
         batch_size=batch_size,

@@ -20,11 +20,11 @@ class BottomModelForCifar100(nn.Module):
     def __init__(self, model_name="resnet20"):
         super(BottomModelForCifar100, self).__init__()
         if model_name == "resnet20":
-            self.model = resnet20(in_channel=3, num_classes=10)
+            self.model = resnet20(in_channel=3, num_classes=100)
         elif model_name == "vgg16":
-            self.model = VGG16(in_channel=3, num_classes=10)
+            self.model = VGG16(in_channel=3, num_classes=100)
         elif model_name == "LeNet":
-            self.model = LeNet(in_channel=3, num_classes=10)
+            self.model = LeNet(in_channel=3, num_classes=100)
 
     def forward(self, x):
         x = self.model(x)

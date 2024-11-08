@@ -1,10 +1,6 @@
+import copy
 import os
 import sys
-import copy
-import random
-import datetime
-import numpy as np
-from sklearn.utils import shuffle
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
 import argparse
@@ -12,26 +8,15 @@ import argparse
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from attack.badvfl.utils import (
-    set_seed, 
-    init_model_releated, init_dataloader, 
-    sample_poisoned_source_target_data, 
-    get_poison_train_dataloader, get_poison_test_dataloader, load_model,
-    save_checkpoint, get_delta_exten, get_poison_dataloader
-)
-from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
-from fedml_core.model.vfl_models import (
-    BottomModelForCinic10,
-    TopModelForCinic10,
-)
+from attack.badvfl.utils import (get_delta_exten, get_poison_test_dataloader,
+                                 get_poison_train_dataloader, init_dataloader,
+                                 init_model_releated, load_model_and_backdoor_data,
+                                 sample_poisoned_source_target_data,
+                                 save_checkpoint, set_seed)
 from fedml_core.trainer.badvfl_trainer import BadVFLTrainer
-from fedml_core.utils.utils import (
-    AverageMeter,
-    keep_predict_loss,
-    over_write_args_from_file,
-)
-from torch.utils.data import Subset
 from fedml_core.utils.logger import setup_logger
+from fedml_core.utils.utils import (AverageMeter, keep_predict_loss,
+                                    over_write_args_from_file)
 
 
 def train(args, logger):
@@ -219,10 +204,8 @@ def train(args, logger):
         print(f"Results for seed {seed} saved to file")
 
 def test(args):
-    model_dir = args.save + "/model_best.pth.tar"
-    model_list = load_model(args.dataset, model_dir)
+    model_list, backdoor_data = load_model_and_backdoor_data(args.dataset, args.save)
 
-    backdoor_data = torch.load(args.save + "/backdoor.pth")
     delta = backdoor_data.get("delta", None)
     source_label = backdoor_data.get("source_label", None)
     target_label = backdoor_data.get("target_label", None)
@@ -257,7 +240,7 @@ def test(args):
     
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
     default_data_path = os.path.abspath("../../data/")
     default_yaml_path = os.path.abspath("../badvfl/best_configs/cifar10_bestattack.yml")
     default_save_path = os.path.abspath("../../results/models/BadVFL/cifar10")
@@ -278,6 +261,7 @@ if __name__ == "__main__":
     experiment_group.add_argument("--seed_num", type=int, default=3, help="repeat num.")
     experiment_group.add_argument("--yaml_path", type=str, default=default_yaml_path, help="attack yaml file")
     experiment_group.add_argument("--load_yaml", action="store_true", default=False, help="backdoor")
+    experiment_group.add_argument("--device", type=str, default="cuda:0")
     
     # 模型相关参数
     model_group = parser.add_argument_group('Model')
@@ -336,8 +320,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.load_yaml:
         over_write_args_from_file(args, args.yaml_path)
-        
-    args.device = device
+    
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # args.device = device
     
     # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # args.timestamp = timestamp
