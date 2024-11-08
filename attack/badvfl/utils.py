@@ -226,8 +226,9 @@ def init_model_releated(dataset, lr, momentum, weight_decay, stone1, stone2, ste
 
 
 def load_model_and_backdoor_data(dataset, save_dir):
-    model_dir = os.path.join(save_dir, "/model_best.pth.tar")
-    backdoor_data_dir = os.path.join(save_dir, "/backdoor.pth")
+    model_dir = os.path.join(save_dir, "model_best.pth.tar")
+    backdoor_data_dir = os.path.join(save_dir, "backdoor.pth")
+    # print(model_dir, backdoor_data_dir)
     
     model_list = []
     if dataset == "CIFAR10":

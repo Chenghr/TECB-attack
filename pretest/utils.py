@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 from fedml_core.data_preprocessing.cifar10 import IndexedCIFAR10
 from fedml_core.data_preprocessing.cifar100.dataset import IndexedCIFAR100
 from fedml_core.data_preprocessing.CINIC10.dataset import CINIC10L
-from fedml_core.model.baseline.vfl_models import (BottomModelForCifar10,
+from fedml_core.model.vfl_models import (BottomModelForCifar10,
                                                   BottomModelForCifar100,
                                                   BottomModelForCinic10,
                                                   TopModelForCifar10,

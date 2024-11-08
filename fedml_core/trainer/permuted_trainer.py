@@ -2,6 +2,7 @@ import copy
 
 import torch
 from fedml_core.trainer.tecb_trainer import TECBTrainer
+from fedml_core.trainer.badvfl_trainer import BadVFLTrainer
 from fedml_core.trainer.vfl_trainer import VFLTrainer
 
 
@@ -11,12 +12,14 @@ class PermutedTrainer(VFLTrainer):
         
         # 创建模型副本用于扰动
         self.perturbed_model = copy.deepcopy(model)
+        self.attack_method = attack_method
         
         if attack_method == "TECB":
             self.baseline_trainer = TECBTrainer(model)  # 基准训练器
             self.modified_trainer = TECBTrainer(self.perturbed_model)  # 扰动训练器
         elif attack_method == "BadVFL":
-            ...
+            self.baseline_trainer = BadVFLTrainer(model)
+            self.modified_trainer = BadVFLTrainer(self.perturbed_model)
         else:
             raise ValueError(f"Unsupported attack method: {attack_method}")
     
@@ -88,23 +91,63 @@ class PermutedTrainer(VFLTrainer):
 
         return epoch_loss
     
-    def test_baseline_model(self, test_data, criterion, device, args, delta, target_label):
-        _, baseline_clean_top1, baseline_clean_top5 = self.baseline_trainer.test(
-            test_data, criterion, device, args
-        )
-        _, baseline_asr_top1, baseline_asr_top5 = self.baseline_trainer.test_backdoor(
-            test_data, criterion, device, args, delta, target_label
-        )
+    def test_baseline_model(self, backdoor_data, test_dataloader, criterion, args, poison_test_dataloader=None):
+        device = args.device
+        
+        if self.attack_method == "TECB":
+            delta = backdoor_data.get("delta", None)
+            target_label = backdoor_data.get("target_label", None) 
+            
+            _, baseline_clean_top1, baseline_clean_top5 = self.baseline_trainer.test(
+                test_dataloader, criterion, device, args
+            )
+            _, baseline_asr_top1, baseline_asr_top5 = self.baseline_trainer.test_backdoor(
+                test_dataloader, criterion, device, args, delta, target_label
+            )
+        elif self.attack_method == "BadVFL":
+            delta = backdoor_data.get("delta", None)
+            target_label = backdoor_data.get("target_label", None)
+            best_position = backdoor_data.get("best_position", None)
+            
+            _, baseline_clean_top1, baseline_clean_top5 = self.baseline_trainer.test(
+                test_dataloader, criterion, args
+            )
+            _, baseline_asr_top1, baseline_asr_top5 = self.baseline_trainer.test_backdoor(
+                poison_test_dataloader, criterion, delta, best_position, target_label, args
+            )
+        else:
+            raise ValueError
+        
         return baseline_clean_top1, baseline_clean_top5, baseline_asr_top1, baseline_asr_top5
         
-    def test_modified_model(self, test_data, criterion, device, args, delta, target_label):
+    def test_modified_model(self, backdoor_data, test_dataloader, criterion, args, poison_test_dataloader=None):
+        device = args.device
         self.modified_trainer.update_model(self.perturbed_model)
-        _, modified_clean_top1, modified_clean_top5 = self.modified_trainer.test(
-            test_data, criterion, device, args
-        )
-        _, modified_asr_top1, modified_asr_top5 = self.modified_trainer.test_backdoor(
-            test_data, criterion, device, args, delta, target_label
-        )
+        
+        if self.attack_method == "TECB":
+            delta = backdoor_data.get("delta", None)
+            target_label = backdoor_data.get("target_label", None) 
+            
+            _, modified_clean_top1, modified_clean_top5 = self.baseline_trainer.test(
+                test_dataloader, criterion, device, args
+            )
+            _, modified_asr_top1, modified_asr_top5 = self.baseline_trainer.test_backdoor(
+                test_dataloader, criterion, device, args, delta, target_label
+            )
+        elif self.attack_method == "BadVFL":
+            delta = backdoor_data.get("delta", None)
+            target_label = backdoor_data.get("target_label", None)
+            best_position = backdoor_data.get("best_position", None)
+            
+            _, modified_clean_top1, modified_clean_top5 = self.baseline_trainer.test(
+                test_dataloader, criterion, args
+            )
+            _, modified_asr_top1, modified_asr_top5 = self.baseline_trainer.test_backdoor(
+                poison_test_dataloader, criterion, delta, best_position, target_label, args
+            )
+        else:
+            raise ValueError
+
         return modified_clean_top1, modified_clean_top5, modified_asr_top1, modified_asr_top5
     
     @staticmethod

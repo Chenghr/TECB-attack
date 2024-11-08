@@ -20,10 +20,10 @@ for half in "${HALF_VALUES[@]}"; do
         --dataset ${DATASET} \
         --data_dir ${DATA_PATH} \
         --half $half \
-        --epochs 2 \
-        --backdoor_start_epoch 1 \
-        --pre_train_epochs 1 \
-        --trigger_train_epochs 1 \
+        # --epochs 2 \
+        # --backdoor_start_epoch 1 \
+        # --pre_train_epochs 1 \
+        # --trigger_train_epochs 1 \
         --seed_num 1 \
         --save $save_path
 done

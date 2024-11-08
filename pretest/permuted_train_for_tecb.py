@@ -68,7 +68,7 @@ def permuted_validate(args, device, logger):
     target_label = backdoor_data.get("target_label", None)
     
     baseline_clean_top1, baseline_clean_top5, baseline_asr_top1, baseline_asr_top5 = trainer.test_baseline_model(
-        test_dataloader, criterion, device, args, delta, target_label
+        backdoor_data, test_dataloader, criterion, args,
     )
     
     main_task_acc, asr_acc = [baseline_clean_top1], [baseline_asr_top1]
