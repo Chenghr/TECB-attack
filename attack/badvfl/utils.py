@@ -484,6 +484,39 @@ def get_poison_train_dataloader(
     
     return poison_train_dataloader
 
+def get_delta_exten_pre(dataset_name, trainset, delta, best_position, selected_target_indices, window_size, half, device):
+    delta_upd = delta.permute(0, 2, 3, 1)
+    
+    if dataset_name in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+        delta_upd = delta_upd * 255.0
+    else:
+        raise ValueError
+    
+    delta_upd = delta_upd.to(torch.uint8)
+    by = best_position[0]
+    bx = best_position[1]
+    delta_exten = torch.zeros_like(torch.from_numpy(trainset.data[selected_target_indices])).to(device)
+    delta_exten[:, by : by + window_size, bx + half : bx + window_size + half, :] = delta_upd.expand(len(selected_target_indices), -1, -1, -1).detach().clone()
+
+    return delta_exten
+
+def get_poison_train_dataloader_pre(
+    dataset_name, data_dir, batch_size, selected_source_indices, selected_target_indices, delta_exten,
+):
+    transform = _init_transform(dataset_name)
+    trainset, testset = _load_dataset(dataset_name, transform, data_dir)
+
+    # 创建数据加载器
+    num_workers = get_recommended_num_workers()
+    trainset.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta_exten.cpu().numpy(), 0, 255)
+    poison_train_dataloader = torch.utils.data.DataLoader(
+        dataset=trainset,
+        batch_size=batch_size,
+        num_workers=num_workers
+    )
+    
+    return poison_train_dataloader
+
 def get_poison_test_dataloader(
     dataset_name, data_dir, batch_size, source_label
 ):

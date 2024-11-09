@@ -75,11 +75,14 @@ def train(args, logger):
         
         trigger_optimizer = torch.optim.SGD([delta], 0.25)
         trigger_loss= []
-        for _ in range(args.trigger_train_epochs):
+        for epoch in range(args.trigger_train_epochs):
+            logger.info(f"Before epoch {epoch}, delta: {delta}")
             delta, loss = trainer.train_trigger(
-                train_dataloader_nobatch, selected_source_indices, selected_target_indices,best_position, delta, trigger_optimizer, args
+                train_dataloader_nobatch, selected_source_indices, selected_target_indices,best_position, delta, trigger_optimizer, args, logger
             )
+            print(f"After epoch {epoch}, delta: {delta}")
             trigger_loss.append(loss)
+            logger.info(f"Epoch {epoch}, Loss: {loss}")
         logger.info(f"Trigger Train Loss: [{', '.join([f'{l:.4f}' for l in trigger_loss])}]")
         logger.info(f"best_position: {best_position}, delta: {delta}")
         
@@ -209,7 +212,6 @@ def test(args):
     delta = backdoor_data.get("delta", None)
     source_label = backdoor_data.get("source_label", None)
     target_label = backdoor_data.get("target_label", None)
-    delta = backdoor_data.get("delta", None)
     best_position = backdoor_data.get("best_position", None)
     
     _, _, test_dataloader = init_dataloader(
