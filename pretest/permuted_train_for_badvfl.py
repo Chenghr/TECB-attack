@@ -71,9 +71,10 @@ def permuted_validate(args, logger):
     
     # 创建epoch进度条
     for epoch in tqdm(range(args.epochs), desc="Training Progress"):
-        _ = trainer.train_perturbed(
+        loss = trainer.train_perturbed(
             train_dataloader, criterion, bottom_criterion, optimizer_list, args.device, args
         )
+        # print(f"epoch: {epoch}, loss: {loss}")
         modified_clean_top1, _, modified_asr_top1, _ = trainer.test_modified_model(
             backdoor_data, test_dataloader, criterion, args, poison_test_dataloader
         )
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     
     default_data_path = os.path.abspath("../../data/")
     default_yaml_path = os.path.abspath("../badvfl/best_configs/cifar10_bestattack.yml")
-    default_save_path = os.path.abspath("../../results/models/BadVFL/cifar10")
+    default_save_path = os.path.abspath("../../results/pretest/permuted_training/BadVFL")
     default_model_path = os.path.abspath("../../results/models/BadVFL/cifar10")
 
     parser = argparse.ArgumentParser("badvfl_cifar10")

@@ -7,7 +7,7 @@ set -e
 PROJECT_ROOT=$(dirname $(dirname $(readlink -f "$0")))
 DATASET="CIFAR10"
 DATA_PATH="${PROJECT_ROOT}/../data"
-BASE_SAVE_PATH="${PROJECT_ROOT}/../results/models/BadVFL/cifar10"
+BASE_SAVE_PATH="${PROJECT_ROOT}/../results/models/BadVFL/cifar10/debug"
 SCRIPT_PATH="${PROJECT_ROOT}/../attack/badvfl/badvfl.py"
 
 # half参数列表

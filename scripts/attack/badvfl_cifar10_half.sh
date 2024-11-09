@@ -10,7 +10,8 @@ BASE_SAVE_PATH="${PROJECT_ROOT}/../results/models/BadVFL/cifar10"
 SCRIPT_PATH="${PROJECT_ROOT}/../attack/badvfl/badvfl.py"
 
 # half参数列表
-HALF_VALUES=(4 8 12 16 20 24 28)
+# HALF_VALUES=(4 8 12 16 20 24 28)
+HALF_VALUES=(28)
 
 for half in "${HALF_VALUES[@]}"; do
     save_path="${BASE_SAVE_PATH}/half_${half}"

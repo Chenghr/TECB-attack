@@ -11,6 +11,7 @@ SCRIPT_PATH="${PROJECT_ROOT}/../attack/badvfl/badvfl_cifar10_training.py"
 
 # half参数列表
 # HALF_VALUES=(14 16 18 20 22 24 26)
+HALF_VALUES=(28)
 
 # for half in "${HALF_VALUES[@]}"; do
 WINDOW_SIZE_VALUE=(3 5)
@@ -23,7 +24,7 @@ for window_size in "${WINDOW_SIZE_VALUE[@]}"; do
         python ${SCRIPT_PATH} \
             --dataset ${DATASET} \
             --data_dir ${DATA_PATH} \
-            --half 16 \
+            --half 28 \
             --report_freq 5 \
             --workers 8 \
             --epochs 80 \
