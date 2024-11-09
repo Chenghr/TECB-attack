@@ -234,63 +234,8 @@ class BadVFLTrainer(VFLTrainer):
                         best_position = (y, x)
 
         return best_position
-        
-    # def train_trigger(self, selected_dataloader, best_position, delta, trigger_optimizer, args):
-    #     def frobenius_norm(x, y):
-    #         return torch.norm(x - y, p='fro', dim=(1, 2, 3))
-        
-    #     device = args.device
-    #     by = best_position[0]
-    #     bx = best_position[1]
-        
-    #     model = self.model[-1].train().to(device)
-    #     for param in model.parameters():
-    #         param.requires_grad = False
-    #     delta.requires_grad_(True)
-        
-    #     batch_loss = []
-    #     for _, (trn_X, trn_y, indices) in enumerate(selected_dataloader):
-    #         if args.dataset in ['CIFAR10', 'CIFAR100', 'CINIC10L']:
-    #             trn_X = trn_X.float().to(device)
-    #             Xa, Xb = split_data(trn_X, args)
-    #             target = trn_y.long().to(device)
-    #         else:
-    #             Xa = trn_X[0].float().to(device)
-    #             Xb = trn_X[1].float().to(device)
-    #             target = trn_y.long().to(device)
-            
-    #         # 筛选出 target 为源类别标签的样本
-    #         source_mask = (target == args.source_label)
-    #         Xb_source = Xb[source_mask]
-    #         Xb_target = Xb[~source_mask]
-            
-    #         # 构建包含触发器的源样本
-    #         batch_delta = torch.zeros_like(Xb_source).to(device)
-    #         batch_delta[:, :, by:by+args.window_size, bx:bx+args.window_size] = delta.expand(Xb_source.size(0), -1, -1, -1)
-    #         Xb_source_poisoned = Xb_source + batch_delta
-            
-    #         # 前向传播
-    #         source_output = model(Xb_source_poisoned)
-    #         target_output = model(Xb_target)
-            
-    #         # 计算损失并反向传播
-    #         trigger_optimizer.zero_grad()
-    #         loss = frobenius_norm(source_output, target_output)
-    #         loss = torch.mean(loss)
-    #         loss.backward()
-    #         trigger_optimizer.step()
-            
-    #         # 将 delta 限制在指定范围内
-    #         with torch.no_grad():
-    #             delta = torch.clamp(delta, -args.eps, args.eps)
-            
-    #         batch_loss.append(loss.item())
-
-    #     epoch_loss = sum(batch_loss) / len(batch_loss)
-        
-    #     return delta, epoch_loss
     
-    def train_trigger(self, train_dataloader_nobatch, selected_source_indices, selected_target_indices, best_position, delta, trigger_optimizer, args):
+    def train_trigger(self, train_dataloader_nobatch, selected_source_indices, selected_target_indices, best_position, delta, trigger_optimizer, args, logger=None):
         device = args.device
         feature_extractor = self.model[-1].train().to(device)
         
@@ -317,8 +262,9 @@ class BadVFLTrainer(VFLTrainer):
             bx = best_position[1]
             batch_delta = torch.zeros_like(Xb_source).to(device)
             poison_num = len(selected_source_indices)
-            batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(poison_num,-1, -1, -1)
+            # batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(poison_num,-1, -1, -1)
             # batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(500,-1, -1, -1)
+            batch_delta[:, :, by : by + args.window_size, bx : bx + args.window_size] = delta.expand(poison_num,-1, -1, -1).clone()
             
             source_features = feature_extractor(Xb_source + batch_delta)
             target_features = feature_extractor(Xb_target)
@@ -327,11 +273,21 @@ class BadVFLTrainer(VFLTrainer):
             loss /= poison_num
             # loss = loss / 500
             
+            # logger.info(f"Loss value: {loss.item()}")
+            # logger.info(f"Delta grad before backward: {delta.grad}")    
             loss.backward()
+            # logger.info(f"Delta grad after backward: {delta.grad}")
+            # logger.info(f"Delta before step: {delta.data.clone()}")
+            
             trigger_optimizer.step()
+            # logger.info(f"Delta after step: {delta.data.clone()}")
+            
+            # logger.info(f"Before clamp - delta: {delta}")
             with torch.no_grad():
-                delta = torch.clamp(delta, -args.eps, args.eps)    
+                # delta = torch.clamp(delta, -args.eps, args.eps)    
+                delta.data.clamp_(-args.eps, args.eps)  
             # print(loss)
+            # logger.info(f"After clamp - delta: {delta}")
             
         return delta, loss
         

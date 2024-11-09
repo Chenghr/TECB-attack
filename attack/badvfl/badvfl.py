@@ -75,14 +75,16 @@ def train(args, logger):
         
         trigger_optimizer = torch.optim.SGD([delta], 0.25)
         trigger_loss= []
+        
+        logger.info(f"Eps {args.eps}")
         for epoch in range(args.trigger_train_epochs):
-            logger.info(f"Before epoch {epoch}, delta: {delta}")
+            # logger.info(f"Before epoch {epoch}, delta: {delta}")
             delta, loss = trainer.train_trigger(
                 train_dataloader_nobatch, selected_source_indices, selected_target_indices,best_position, delta, trigger_optimizer, args, logger
             )
-            print(f"After epoch {epoch}, delta: {delta}")
+            # print(f"After epoch {epoch}, delta: {delta}")
             trigger_loss.append(loss)
-            logger.info(f"Epoch {epoch}, Loss: {loss}")
+            # logger.info(f"Epoch {epoch}, Loss: {loss}")
         logger.info(f"Trigger Train Loss: [{', '.join([f'{l:.4f}' for l in trigger_loss])}]")
         logger.info(f"best_position: {best_position}, delta: {delta}")
         
@@ -295,7 +297,7 @@ if __name__ == "__main__":
     backdoor_group = parser.add_argument_group('Backdoor')
     training_group.add_argument("--trigger_lr", type=float, default=0.001, help="init learning rate for trigger")
     backdoor_group.add_argument("--alpha", type=float, default=0.02, help="uap learning rate decay")
-    backdoor_group.add_argument("--eps", type=float, default=16 / 255, help="uap clamp bound")
+    backdoor_group.add_argument("--eps", type=float, default=0.5, help="uap clamp bound")
     backdoor_group.add_argument("--corruption_amp", type=float, default=5.0, help="amplification of corruption")
     backdoor_group.add_argument("--backdoor_start", action="store_true", default=False, help="backdoor")
     backdoor_group.add_argument("--poison_budget", type=float, default=0.1, help="poison sample fraction")
