@@ -229,9 +229,16 @@ def load_model_and_backdoor_data(dataset_name, file_path):
         if len(checkpoint["state_dict"]) != len(model_list):
             raise ValueError(f"Model state dict count mismatch: expected {len(model_list)}, got {len(checkpoint['state_dict'])}")
         
-        # 加载模型参数
+        # 对每个模型的状态字典进行处理
         for i in range(len(model_list)):
-            model_list[i].load_state_dict(checkpoint["state_dict"][i])
+            # 创建新的状态字典并替换键名
+            new_state_dict = {}
+            for key, value in checkpoint["state_dict"][i].items():
+                new_key = key.replace('resnet20', 'model')
+                new_state_dict[new_key] = value
+                
+            # 加载处理后的状态字典到对应模型
+            model_list[i].load_state_dict(new_state_dict)
             
     except Exception as e:
         raise RuntimeError(f"Error loading model or backdoor data: {str(e)}")

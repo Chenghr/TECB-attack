@@ -128,10 +128,10 @@ class PermutedTrainer(VFLTrainer):
             delta = backdoor_data.get("delta", None)
             target_label = backdoor_data.get("target_label", None) 
             
-            _, modified_clean_top1, modified_clean_top5 = self.baseline_trainer.test(
+            _, modified_clean_top1, modified_clean_top5 = self.modified_trainer.test(
                 test_dataloader, criterion, device, args
             )
-            _, modified_asr_top1, modified_asr_top5 = self.baseline_trainer.test_backdoor(
+            _, modified_asr_top1, modified_asr_top5 = self.modified_trainer.test_backdoor(
                 test_dataloader, criterion, device, args, delta, target_label
             )
         elif self.attack_method == "BadVFL":
@@ -139,10 +139,10 @@ class PermutedTrainer(VFLTrainer):
             target_label = backdoor_data.get("target_label", None)
             best_position = backdoor_data.get("best_position", None)
             
-            _, modified_clean_top1, modified_clean_top5 = self.baseline_trainer.test(
+            _, modified_clean_top1, modified_clean_top5 = self.modified_trainer.test(
                 test_dataloader, criterion, args
             )
-            _, modified_asr_top1, modified_asr_top5 = self.baseline_trainer.test_backdoor(
+            _, modified_asr_top1, modified_asr_top5 = self.modified_trainer.test_backdoor(
                 poison_test_dataloader, criterion, delta, best_position, target_label, args
             )
         else:

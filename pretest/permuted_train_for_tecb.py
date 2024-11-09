@@ -47,7 +47,7 @@ def permuted_validate(args, device, logger):
     train_dataloader, test_dataloader = load_dataset(args.dataset, args.data_dir, args.batch_size)
     model_list, backdoor_data = load_model_and_backdoor_data(args.dataset, args.model_dir)
     
-    trainer = PermutedTrainer(model_list)
+    trainer = PermutedTrainer(model_list, args=args, attack_method=args.attack_method)
     
     criterion = nn.CrossEntropyLoss().to(device)
     bottom_criterion = keep_predict_loss
@@ -64,9 +64,6 @@ def permuted_validate(args, device, logger):
     if args.update_mode != "bottom_only":
         optimizer_list=trainer.update_optimizer_for_layers(trainer.perturbed_model, optimizer_list, args)
     
-    delta = backdoor_data.get("delta", None)
-    target_label = backdoor_data.get("target_label", None)
-    
     baseline_clean_top1, baseline_clean_top5, baseline_asr_top1, baseline_asr_top5 = trainer.test_baseline_model(
         backdoor_data, test_dataloader, criterion, args,
     )
@@ -80,7 +77,7 @@ def permuted_validate(args, device, logger):
             train_dataloader, criterion, bottom_criterion, optimizer_list, device, args
         )
         modified_clean_top1, modified_clean_top5, modified_asr_top1, modified_asr_top5 = trainer.test_modified_model(
-            test_dataloader, criterion, device, args, delta, target_label
+            backdoor_data, test_dataloader, criterion, args,
         )
         main_task_acc.append(modified_clean_top1)
         main_task_acc_top5.append(modified_clean_top5)
@@ -108,8 +105,6 @@ def permuted_validate(args, device, logger):
      
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    
     # 获取当前文件的绝对路径和目录
     current_file = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_file)
@@ -145,6 +140,8 @@ if __name__ == "__main__":
     parser.add_argument("--update_top_layers", type=str, nargs='+', default=['all'])
     
     args = parser.parse_args()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    args.device = device
 
     # 创建一个logger
     logger = setup_logger(args)
