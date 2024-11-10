@@ -1,4 +1,4 @@
-dataset: CIFAR10
+dataset: CIFAR100
 
 # model
 report_freq: 5
@@ -8,7 +8,7 @@ dropout_ratio: 0.25
 beta: 0.4
 gamma_up: 1.2
 gamma_low: 0.6
-target_class: cat
+target_class: apple
 batch_size: 1024
 local_lr: 0.5
 eps: 0.06

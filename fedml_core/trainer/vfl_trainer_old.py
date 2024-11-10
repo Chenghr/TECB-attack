@@ -53,9 +53,6 @@ def split_data(data, args):
     elif args.dataset == 'TinyImageNet':
         x_a = data[:, :, :, 0:args.half]
         x_b = data[:, :, :, args.half:64]
-    elif args.dataset == 'Criteo':
-        x_b = data[:, args.half:D_]
-        x_a = data[:, 0:args.half]
     elif args.dataset == 'BCW':
         x_b = data[:, args.half:28]
         x_a = data[:, 0:args.half]
