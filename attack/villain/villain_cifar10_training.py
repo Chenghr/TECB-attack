@@ -139,7 +139,7 @@ def main(device, args, logger):
     Main_Top1_acc = AverageMeter()
     Main_Top5_acc = AverageMeter()
 
-    for seed in range(5):
+    for seed in range(1):
         set_seed(seed)
         
         save_model_dir = args.save + f"/seed={seed}_saved_models"

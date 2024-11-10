@@ -1,9 +1,10 @@
 import copy
 
 import torch
+from fedml_core.trainer.vfl_trainer import VFLTrainer
 from fedml_core.trainer.tecb_trainer import TECBTrainer
 from fedml_core.trainer.badvfl_trainer import BadVFLTrainer
-from fedml_core.trainer.vfl_trainer import VFLTrainer
+from fedml_core.trainer.villiain_trainer_new import VillainTrainer
 
 
 class PermutedTrainer(VFLTrainer):
@@ -20,6 +21,9 @@ class PermutedTrainer(VFLTrainer):
         elif attack_method == "BadVFL":
             self.baseline_trainer = BadVFLTrainer(model)
             self.modified_trainer = BadVFLTrainer(self.perturbed_model)
+        elif attack_method == "Villain":
+            self.baseline_trainer = VillainTrainer(model)
+            self.modified_trainer = VillainTrainer(self.perturbed_model)
         else:
             raise ValueError(f"Unsupported attack method: {attack_method}")
     
@@ -115,6 +119,16 @@ class PermutedTrainer(VFLTrainer):
             _, baseline_asr_top1, baseline_asr_top5 = self.baseline_trainer.test_backdoor(
                 poison_test_dataloader, criterion, delta, best_position, target_label, args
             )
+        elif self.attack_method == "Villain":
+            delta = backdoor_data.get("delta", None)
+            target_label = backdoor_data.get("target_label", None)
+            
+            _, baseline_clean_top1, baseline_clean_top5 = self.baseline_trainer.test(
+                test_dataloader, criterion, args.device, args
+            )
+            _, baseline_asr_top1, baseline_asr_top5 = self.baseline_trainer.test_backdoor(
+                test_dataloader, criterion, delta, target_label, args.device, args
+            )
         else:
             raise ValueError
         
@@ -144,6 +158,16 @@ class PermutedTrainer(VFLTrainer):
             )
             _, modified_asr_top1, modified_asr_top5 = self.modified_trainer.test_backdoor(
                 poison_test_dataloader, criterion, delta, best_position, target_label, args
+            )
+        elif self.attack_method == "Villain":
+            delta = backdoor_data.get("delta", None)
+            target_label = backdoor_data.get("target_label", None)
+            
+            _, modified_clean_top1, modified_clean_top5 = self.modified_trainer.test(
+                test_dataloader, criterion, args.device, args
+            )
+            _, modified_asr_top1, modified_asr_top5 = self.modified_trainer.test_backdoor(
+                test_dataloader, criterion, delta, target_label, args.device, args
             )
         else:
             raise ValueError
