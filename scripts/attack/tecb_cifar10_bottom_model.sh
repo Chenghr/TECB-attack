@@ -12,18 +12,20 @@ BASE_SAVE_PATH="${PROJECT_ROOT}/../results/models/TECB/cifar10"
 SCRIPT_PATH="${PROJECT_ROOT}/../attack/tecb/vfl_cifar10.py"
 
 # half参数列表
-BOTTOM_MODEL_NAME_VALUES=("vgg16" "LeNet")
+# BOTTOM_MODEL_NAME_VALUES=("vgg16" "LeNet")
+BOTTOM_MODEL_NAME_VALUES=("resner20")
 
 # 不进行攻击，寻找最优训练参数
 for bottom_model_name in "${BOTTOM_MODEL_NAME_VALUES[@]}"; do
     for half in "${HALF_VALUES[@]}"; do
-        save_path="${BASE_SAVE_PATH}/bottom_model_${bottom_model_name}/half_${half}"
-        
+        # save_path="${BASE_SAVE_PATH}/bottom_model_${bottom_model_name}/half_${half}"
+        save_path="${BASE_SAVE_PATH}/half_${half}"
+
         python ${SCRIPT_PATH} \
             --dataset ${DATASET} \
             --data_dir ${DATA_PATH} \
             --bottom_model_name $bottom_model_name \
-            --half 16 \
+            --half 24 \
             --epochs 100 \
             --batch_size 64 \
             --lr 0.01 \

@@ -13,11 +13,22 @@ SCRIPT_PATH="${PROJECT_ROOT}/../../pretest/permuted_train_for_villain.py"
 SAVE_PATH="${PROJECT_ROOT}/../../results/pretest/permuted_training/Villain"
 
 # 28 的时候 windows size 大小不满足
-declare -a HALF=(4 8 12 16 20 24 28)
-declare -a SEED=(2 0 0  1  1  2  2)
-declare -a UPDATE_MODES=('bottom_only' 'top_only' 'both')
-
-# 定义要更新的层配置
+# declare -a HALF=(4 8 12 16 20 24 28)
+# declare -a SEED=(2 0 0  1  1  2  2)
+# declare -a UPDATE_MODES=('bottom_only' 'top_only' 'both')
+# declare -a UPDATE_TOP_LAYERS=(
+#     "fc1top bn0top"                                         
+#     "fc2top bn1top"                                         
+#     "fc3top bn2top"                                         
+#     "fc4top bn3top"                                         
+# )
+# declare -a HALF=(16 20 24)
+# declare -a SEED=(1 1 2)
+# declare -a UPDATE_MODES=('bottom_only')
+# declare -a UPDATE_TOP_LAYERS=("all")  
+declare -a HALF=(4 8 12)
+declare -a SEED=(2 0 0 )
+declare -a UPDATE_MODES=('top_only')
 declare -a UPDATE_TOP_LAYERS=(
     "fc1top bn0top"                                         
     "fc2top bn1top"                                         
@@ -28,7 +39,7 @@ declare -a UPDATE_TOP_LAYERS=(
 # Training parameters
 ATTACK_METHOD='Villain'
 EPOCHS=30
-LEARNING_RATE=2e-5
+LEARNING_RATE=1e-4  # 2e-5 太小了不行
 BATCH_SIZE=256
 
 # 验证数组长度是否匹配

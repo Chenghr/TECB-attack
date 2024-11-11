@@ -13,9 +13,14 @@ SCRIPT_PATH="${PROJECT_ROOT}/../../pretest/permuted_train_for_badvfl.py"
 DATASET="CIFAR10"
 
 # 28 的时候 windows size 大小不满足
-declare -a HALF=(4 8 16 20 24)
-declare -a SEED=(1 1 1 1 1)
-declare -a UPDATE_MODES=('bottom_only' 'top_only' 'both')
+# declare -a HALF=(4 8 16 20 24)
+# declare -a SEED=(1 1 1 1 1)
+# declare -a HALF=(16 20 24)
+# declare -a SEED=(1 1 1)
+declare -a HALF=(12)
+declare -a SEED=(2 )
+# declare -a UPDATE_MODES=('bottom_only' 'top_only' 'both')
+declare -a UPDATE_MODES=('top_only')
 
 # 定义要更新的层配置
 declare -a UPDATE_TOP_LAYERS=(
@@ -28,7 +33,7 @@ declare -a UPDATE_TOP_LAYERS=(
 # Training parameters
 ATTACK_METHOD='BadVFL'
 EPOCHS=30
-LEARNING_RATE=3e-5
+LEARNING_RATE=4e-5
 BATCH_SIZE=256
 
 # 验证数组长度是否匹配
@@ -48,7 +53,7 @@ for i in "${!HALF[@]}"; do
     MODEL_DIR="${PROJECT_ROOT}/../../results/models/BadVFL/cifar10/half_${current_half}/${current_seed}_saved_models"
     
     for update_mode in "${UPDATE_MODES[@]}"; do
-        if [ "$update_mode" = "both" ]; then
+        if [ "$update_mode" = "both" ] || [ "$update_mode" = "bottom_only" ]; then
             # 如果是both模式，只运行一次，使用all作为layers
             echo "Processing: half: ${current_half}, seed: ${current_seed}, mode: ${update_mode}, layers: all"
             
