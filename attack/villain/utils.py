@@ -68,7 +68,7 @@ def get_recommended_num_workers():
     
     return recommended
     
-def init_dataloader(dataset, data_dir="./data", batch_size=128):
+def init_dataloader(dataset, data_dir="./data", batch_size=128, is_shuffle=False):
     """加载数据集
     
     Parameters:
@@ -100,7 +100,7 @@ def init_dataloader(dataset, data_dir="./data", batch_size=128):
     train_dataloader = torch.utils.data.DataLoader(
         dataset=trainset,
         batch_size=batch_size,
-        shuffle=False,   # set false for villian attack
+        shuffle=is_shuffle,   # set false for villian attack
         num_workers=num_workers
     )
     test_dataloader = torch.utils.data.DataLoader(

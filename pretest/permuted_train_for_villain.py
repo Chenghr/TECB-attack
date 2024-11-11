@@ -37,7 +37,7 @@ def permuted_validate(args, logger):
     )
     
     train_dataloader, test_dataloader = init_dataloader(
-        args.dataset, args.data_dir, args.batch_size
+        args.dataset, args.data_dir, args.batch_size, is_shuffle=True
     )
     model_list, backdoor_data = load_model_and_backdoor_data(
         args.dataset, args.model_dir
