@@ -10,7 +10,7 @@ PROJECT_ROOT="$(pwd)"
 DATA_DIR="${PROJECT_ROOT}/../../data/"
 SCRIPT_PATH="${PROJECT_ROOT}/../../pretest/permuted_train_for_badvfl.py"
 
-DATASET="CIFAR10"
+DATASET="CIFAR100"
 
 declare -a HALF=(16)
 declare -a SEED=(0)
@@ -28,7 +28,7 @@ declare -a UPDATE_TOP_LAYERS=(
 # Training parameters
 ATTACK_METHOD='BadVFL'
 EPOCHS=30
-LEARNING_RATE=2e-5
+LEARNING_RATE=1e-5
 BATCH_SIZE=256
 UPDATE_MODE='both'
 
@@ -44,7 +44,7 @@ for i in "${!HALF[@]}"; do
     current_seed=${SEED[$i]}
     
     LOG_FILE="badvfl_debug.log"
-    MODEL_DIR="${PROJECT_ROOT}/../../results/models/BadVFL/cifar10/half_${current_half}/${current_seed}_saved_models"
+    MODEL_DIR="${PROJECT_ROOT}/../../results/models/BadVFL/cifar100/half_${current_half}/${current_seed}_saved_models"
     
     for layers in "${UPDATE_TOP_LAYERS[@]}"; do
         echo "Processing: half: ${current_half}, seed: ${current_seed}, mode: ${update_mode}, layers: ${layers}"

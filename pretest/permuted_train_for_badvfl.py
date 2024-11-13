@@ -63,27 +63,37 @@ def permuted_validate(args, logger):
     if args.update_mode != "bottom_only":
         optimizer_list=trainer.update_optimizer_for_layers(trainer.perturbed_model, optimizer_list, args)
     
-    baseline_clean_top1, _, baseline_asr_top1, _ = trainer.test_baseline_model(
+    baseline_clean_top1, baseline_clean_top5, baseline_asr_top1, _ = trainer.test_baseline_model(
         backdoor_data, test_dataloader, criterion, args, poison_test_dataloader
     )
     
-    main_task_acc, asr_acc = [baseline_clean_top1], [baseline_asr_top1]
-    
+    if args.dataset == "CIFAR100":
+        main_task_acc, asr_acc = [baseline_clean_top5], [baseline_asr_top1]
+    else:
+        main_task_acc, asr_acc = [baseline_clean_top1], [baseline_asr_top1]
+        
     # 创建epoch进度条
     for epoch in tqdm(range(args.epochs), desc="Training Progress"):
         loss = trainer.train_perturbed(
             train_dataloader, criterion, bottom_criterion, optimizer_list, args.device, args
         )
         # print(f"epoch: {epoch}, loss: {loss}")
-        modified_clean_top1, _, modified_asr_top1, _ = trainer.test_modified_model(
+        modified_clean_top1, modified_clean_top5, modified_asr_top1, _ = trainer.test_modified_model(
             backdoor_data, test_dataloader, criterion, args, poison_test_dataloader
         )
-        main_task_acc.append(modified_clean_top1)
+        if args.dataset == "CIFAR100":
+            main_task_acc.append(modified_clean_top5)
+        else:
+            main_task_acc.append(modified_clean_top1)
+        
         asr_acc.append(modified_asr_top1)
         
         # 使用tqdm.write避免进度条显示混乱
-        tqdm.write(f"Epoch {epoch+1}: Acc={modified_clean_top1:.2f}%, ASR={modified_asr_top1:.2f}%")
-    
+        if args.dataset == "CIFAR100":
+            tqdm.write(f"Epoch {epoch+1}: Acc={modified_clean_top5:.2f}%, ASR={modified_asr_top1:.2f}%")
+        else:
+            tqdm.write(f"Epoch {epoch+1}: Acc={modified_clean_top1:.2f}%, ASR={modified_asr_top1:.2f}%")
+            
     # 将所有数值保留两位小数
     main_task_acc = [f"{x:.2f}" for x in main_task_acc]
     asr_acc = [f"{x:.2f}" for x in asr_acc]
