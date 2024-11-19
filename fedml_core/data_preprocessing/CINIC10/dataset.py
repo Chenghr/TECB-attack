@@ -39,19 +39,19 @@ class CINIC10L(Dataset):
         
     def __getitem__(self, index):
         file_path, label = self.image_paths[index]
-        
         # 如果该索引的图像被修改过，则使用修改后的图像
-        if index in self.modified_images:
+
+        if index in self.modified_images.keys():
             img = self.modified_images[index]
             # 如果存储的是numpy数组，转换为PIL Image
             if isinstance(img, np.ndarray):
-                img = Image.fromarray(img.astype('uint8'))
+                img = Image.fromarray(img)
         else:
             img = Image.open(file_path)
             
         if self.transform:
             img = self.transform(img)
-            
+
         return img, label, index
 
     def __len__(self):
@@ -68,7 +68,8 @@ class CINIC10L(Dataset):
         if isinstance(new_images, np.ndarray):
             assert len(indices) == len(new_images), "索引数量与图像数量不匹配"
             for idx, img in zip(indices, new_images):
-                self.modified_images[idx] = img
+                self.modified_images[int(idx)] = img
+                
         elif isinstance(new_images, list):
             assert len(indices) == len(new_images), "索引数量与图像数量不匹配"
             for idx, img in zip(indices, new_images):
