@@ -162,7 +162,7 @@ class VillainTrainer(VFLTrainer):
                 dropout_indices = true_indices[torch.randperm(len(true_indices))[:dropout_num]]
                 dropout_mask = np.copy(mask)
                 dropout_mask[dropout_indices] = False
-                delta_expanded = torch.zeros(dropout_mask.shape[0], 10)
+                delta_expanded = torch.zeros(dropout_mask.shape[0], dim)
                 delta_expanded[dropout_mask] = delta_vector * gamma
                 delta_expanded.requires_grad = False
                 input_tensor_top_model_b_poison = input_tensor_top_model_b + delta_expanded.to(device)
