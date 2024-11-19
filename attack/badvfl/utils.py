@@ -125,10 +125,10 @@ def _init_transform(dataset):
             transforms.Lambda(image_format_2_rgb),
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
-            transforms.Normalize(
-                mean=(0.47889522, 0.47227842, 0.43047404),
-                std=(0.24205776, 0.23828046, 0.25874835)
-            )
+            # transforms.Normalize(
+            #     mean=(0.47889522, 0.47227842, 0.43047404),
+            #     std=(0.24205776, 0.23828046, 0.25874835)
+            # )
         ])
     else:
         transform = transforms.Compose([
@@ -459,14 +459,15 @@ def get_poison_train_dataloader(
             f"Shape mismatch: source {source_images.shape} vs delta {delta_numpy.shape}"
         
         modified_images = source_images + delta_numpy
-        clipped_images = np.clip(modified_images, 0, 255).astype(np.uint8)
-        trainset.data[selected_target_indices] = clipped_images
+        if dataset_name in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+            clipped_images = np.clip(modified_images, 0, 255).astype(np.uint8)
+        trainset.modify_images(selected_target_indices, clipped_images)
     else:
         # 1. 获取源图像数据
         source_images = []
         for idx in selected_source_indices:
             img_path = trainset.image_paths[idx][0]
-            img = np.array(Image.open(img_path))
+            img = np.array(Image.open(img_path).resize((32,32)))
             source_images.append(img)
         source_images = np.stack(source_images)
         modified_images = source_images + delta_numpy
@@ -479,7 +480,8 @@ def get_poison_train_dataloader(
     poison_train_dataloader = torch.utils.data.DataLoader(
         dataset=trainset,
         batch_size=batch_size,
-        num_workers=num_workers
+        num_workers=num_workers,
+        shuffle = True
     )
     
     return poison_train_dataloader
@@ -508,7 +510,10 @@ def get_poison_train_dataloader_pre(
 
     # 创建数据加载器
     num_workers = get_recommended_num_workers()
-    trainset.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta_exten.cpu().numpy(), 0, 255)
+    if dataset_name in ["CIFAR10", "CIFAR100", "CINIC10L"]:
+        trainset.data[selected_target_indices] = np.clip(trainset.data[selected_source_indices] + delta_exten.cpu().numpy(), 0, 255)
+    else:
+        raise ValueError
     poison_train_dataloader = torch.utils.data.DataLoader(
         dataset=trainset,
         batch_size=batch_size,
